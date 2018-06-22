@@ -1,9 +1,14 @@
+"""
+This program reverse-engineers quotes from betting sites
+and computes a list of top bets according to the kicktipp-rules
+quotes can be found at www.bet365.com
+samles below for Nigeria vs. Island, Fri Jun 22nd, 2018, 4:26 pm
+"""
+
 import sys
 
 # dictionary of the quotes for exact result bets
-# to be edited for the given game
-# quotes can be achieved from www.bet365.com
-# samles below are for Nigeria v Island, Fri Jun 22nd, 2018, 4:26 pm
+# to be edited for the given game 
 BETTING_QUOTES = {
 	(1,0) : 7.5,
 	(2,0) : 15,
@@ -42,24 +47,11 @@ def get_points(result, bet):
 	x1,y1 = result
 	x2,y2 = bet
 
-	# check for exact prediction
-	if result == bet:
-		return 4	
-	
-	# check for draw prediction
-	if x1==y1 and x2==y2:
-		return 2
-
-	# check for goal difference
-	if x1-y1 == x2-y2:
-		return 3
-
-	# check for tendency
-	if (x1-y1) * (x2-y2) > 0:
-		return 2
-
-	# no points at all
-	return 0
+	if result == bet: return 4	        # correct result
+	if x1==y1 and x2==y2: return 2      # draw
+	if x1-y1 == x2-y2: return 3         # correct goal difference
+	if (x1-y1) * (x2-y2) > 0: return 2  # correct tendency
+	return 0                            # all wrong
 
 
 def main(argv):
