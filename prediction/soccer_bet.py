@@ -1,15 +1,50 @@
 import sys
 
-MAX_GOALS = 6
+# dictionary of the quotes for exact result bets
+# to be edited for the given game
+# quotes can be achieved from www.bet365.com
+# samles below are for Nigeria v Island, Fri Jun 22nd, 2018, 4:26 pm
+BETTING_QUOTES = {
+	(1,0) : 7.5,
+	(2,0) : 15,
+	(2,1) : 13,
+	(3,0) : 41,
+	(3,1) : 34,
+	(3,2) : 51,
+	(4,0) : 81,
+	(4,1) : 81,
+	(4,2) : 151,
+	(4,3) : 351,
+	(5,0) : 501,
+	(5,1) : 351,
+	(0,0) : 6.5,
+	(1,1) : 6.5,
+	(2,2) : 21,
+	(3,3) : 101,
+	(0,1) : 6.5,
+	(0,2) : 12,
+	(1,2) : 12,
+	(0,3) : 29,
+	(1,3) : 29,
+	(2,3) : 51,
+	(0,4) : 67,
+	(1,4) : 67,
+	(2,4) : 126,
+	(3,4) : 351,
+	(0,5) : 251,
+	(1,5) : 251,
+	(2,5) : 501
+}
 
-def get_points(actual_result, bet):
+def get_points(result, bet):
+	"""Get the points for a bet based on the actual result."""
 	
-	# check for exact prediction
-	if actual_result == bet:
-		return 4
-	
-	x1,y1 = actual_result
+	x1,y1 = result
 	x2,y2 = bet
+
+	# check for exact prediction
+	if result == bet:
+		return 4	
 	
 	# check for draw prediction
 	if x1==y1 and x2==y2:
@@ -26,79 +61,21 @@ def get_points(actual_result, bet):
 	# no points at all
 	return 0
 
+
 def main(argv):
 
-	# list of lists, storing the quotes for exact results
-	# quotes for a specific game can be achieved from www.bet365.com
-	# samles below are for Nigeria v Island, Fri Jun 22nd, 2018, 4:26 pm
-	quotes = [[0 for x in range(MAX_GOALS)] for y in range(MAX_GOALS)]
+	# compute prob and correct the error (profit margin)
+	prob = {bet: 1.0/quote for bet, quote in BETTING_QUOTES.items()}
+	p_sum = sum(prob.values())
+	prob = {bet: p / p_sum for bet, p in prob.items()}
 
-	# lists of lists, storing the probability for each result to happen
-	probabilities = [[0 for x in range(MAX_GOALS)] for y in range(MAX_GOALS)]
+	# compute the average points for each bet 
+	averages = {bet: sum([get_points(result, bet) * p for result, p in prob.items()]) for bet in prob}
 
-	# lists of lists, storing the probability for each result to happen
-	average = [[0 for x in range(MAX_GOALS)] for y in range(MAX_GOALS)]
+	# print the bets from best to worst
+	for bet, av in sorted(averages.items(), key=lambda x: x[1], reverse = True):
+		print('{}:{} -- {av}'.format(bet[0], bet[1], av=round(av, 2)))
 
-	# 1st team wins
-	quotes[1][0] = 7.5
-	quotes[2][0] = 15
-	quotes[2][1] = 13
-	quotes[3][0] = 41
-	quotes[3][1] = 34
-	quotes[3][2] = 51
-	quotes[4][0] = 81
-	quotes[4][1] = 81
-	quotes[4][2] = 151
-	quotes[4][3] = 351
-	quotes[5][0] = 501
-	quotes[5][1] = 351
-
-	# draw
-	quotes[0][0] = 6.5
-	quotes[1][1] = 6.5
-	quotes[2][2] = 21
-	quotes[3][3] = 101
-
-	# 2nd team wins
-	quotes[0][1] = 6.5
-	quotes[0][2] = 12
-	quotes[1][2] = 12
-	quotes[0][3] = 29
-	quotes[1][3] = 29
-	quotes[2][3] = 51
-	quotes[0][4] = 67
-	quotes[1][4] = 67
-	quotes[2][4] = 126
-	quotes[3][4] = 351
-	quotes[0][5] = 251
-	quotes[1][5] = 251
-	quotes[2][5] = 501
-
-	# convert to reciprocal values, so we have probabilities
-	# also sum up the probabilities
-	probability_sum = 0
-	for x in range(MAX_GOALS):
-		for y in range(MAX_GOALS):
-			if quotes[x][y] > 0:
-				probabilities[x][y] = 1./quotes[x][y]
-				probability_sum += probabilities[x][y]
-
-	# error correction (profit margin) of the probabilities
-	for x in range(MAX_GOALS):
-		for y in range(MAX_GOALS):
-			probabilities[x][y] /= probability_sum 
-
-	# compute average
-	for x1 in range(MAX_GOALS):
-		for y1 in range(MAX_GOALS):
-			for x2 in range(MAX_GOALS):
-				for y2 in range(MAX_GOALS):
-					average[x2][y2] += get_points((x1,y1),(x2,y2)) * probabilities[x1][y1]
-
-	# find the best average
-	for x in range(MAX_GOALS):
-		for y in range(MAX_GOALS):
-			print("{x}:{y} -- {av}".format(x=x,y=y,av=round(average[x][y],2)))
 
 if __name__ == "__main__":
     main(sys.argv)
