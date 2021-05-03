@@ -71,15 +71,9 @@ def main():
 	else:
 		args.out = '.'
 
-	# create gpg singleton
-	gpg = gnupg.GPG(gnupghome=args.out, verbose=True)
-
-	# adjust permissions (avoids PGP warning)
-	#os.chmod(args.out + '/' + KEYRING_DIR, stat.S_IRWXU)
-	#os.chmod(args.out + '/' + KEYRING_DIR + "/private-keys-v1.d", stat.S_IRWXU)
-
-	# create batch file for gpg key generation
-	#file = open(args.out + '/' + BATCH_FILE, "w")
+	# create gpg instance (its a singleton :)
+	# set verbose=True for debugging
+	gpg = gnupg.GPG(gnupghome=args.out, verbose=False)
 
 	# credentials file (can be imported to keepass)
 	credentials_file = open(args.out + '/' + CREDENTIALS_FILE, "w")
@@ -94,7 +88,7 @@ def main():
 			print ("skipping invalid mail address: " + email)
 			continue
 		
-		# generate password
+		# generate passphrase
 		passphrase = pass_gen()
 
 		# generate key pair
@@ -116,8 +110,6 @@ def main():
 		credentials_file.write('"{p}",'.format(p=passphrase))	# password
 		credentials_file.write('"",')							# url
 		credentials_file.write('"{t}",'.format(t=datetime.datetime.now()))	# notes
-
-		print("2323232" + key.fingerprint)
 
 		# export private key to file
 		ascii_armored_private_keys = gpg.export_keys(
