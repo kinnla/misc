@@ -56,7 +56,7 @@ def main():
 
 		# check if output dir already exists and
 		if os.path.exists(args.out):
-			if input("Directory '{out}' already exists. Delete contents and re-create? (y/n)"
+			if input("Directory '{out}' already exists. Delete contents and re-create? (y/n) "
 				.format(out=args.out))=='y':
 				shutil.rmtree(args.out)
 			else:
@@ -77,6 +77,9 @@ def main():
 	csv_file = open(args.out + '/' + CSV_FILE, "w")
 	csv_file.write('"Group","Title","Username","Password","URL","Notes"\n')
 
+	# list to store fingerprints
+	fingerprints = []
+
 	# iterate on email addresses
 	for email in email_addresses:
 
@@ -91,6 +94,7 @@ def main():
 
 		# generate PGP key pair
 		input_data = gpg.gen_key_input(
+			name_real=email,
 			name_email=email,
 			passphrase=passphrase,
 			expire_date=0,
@@ -124,13 +128,19 @@ def main():
 		with open(args.out + '/' + email + "_private.asc", 'w') as f:
 			f.write(ascii_armored_private_keys)
 
+		# store fingerprint
+		fingerprints.append(key.fingerprint)
+
 	# close csv file
 	csv_file.close()
 
-	# ToDo: export all public keys
+	# export all public keys
+	ascii_armored_public_keys = gpg.export_keys(fingerprints)
+	with open(args.out + '/' + "all_public.asc", 'w') as f:
+		f.write(ascii_armored_public_keys)
 
 	# end of program
-	print("done.\n")
+	print("done. Warning: passwords are stored in plain text.\n")
 
 # --------------- start of the skript ------------------
 
