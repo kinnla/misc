@@ -12,14 +12,13 @@ import sys
 
 # ---------------------- constants -----------------------
 
-# path to the credentials file containing all IDs and passwords
-# will be created in this skript
-# file is fomatted so can import it to keepass
+# path to the csv file containing all IDs and passwords
+# will be created by this skript
+# file can be imported to a passwort manager, e.g. KeePassXC
 CSV_FILE = r"pgp-credentials.csv" 
 
-# ephemeral home directory in which the keyrings will be created
-KEYRING_DIR = r"pgp-keys"
-
+# notes to be included for each key in the CSV file
+CSV_NOTES = "Created at " + datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
 
 
 # --------------------- helper function -----------------------
@@ -71,7 +70,7 @@ def main():
 		args.out = '.'
 
 	# create gpg instance (its a singleton :)
-	# set verbose=True for debugging
+	# set 'verbose=True' for debugging
 	gpg = gnupg.GPG(gnupghome=args.out, verbose=False)
 
 	# credentials file (can be imported to keepass)
@@ -84,13 +83,13 @@ def main():
 		# check if email address is valid
 		regex = '^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$'
 		if not re.search(regex, email):
-			print ("skipping invalid mail address: " + email)
+			print ("skipping invalid email address: " + email)
 			continue
 		
 		# generate passphrase
 		passphrase = pass_gen()
 
-		# generate key pair
+		# generate PGP key pair
 		input_data = gpg.gen_key_input(
 			name_email=email,
 			passphrase=passphrase,
@@ -104,11 +103,11 @@ def main():
 		
 		# write credentials to file
 		csv_file.write('"pgp-keys",')					# group
-		csv_file.write('"{a}",'.format(a=email))		# title
-		csv_file.write('"{f}",'.format(f=key.fingerprint))		# username
-		csv_file.write('"{p}",'.format(p=passphrase))	# password
+		csv_file.write('"{s}",'.format(s=email))		# title
+		csv_file.write('"{s}",'.format(s=key.fingerprint))		# username
+		csv_file.write('"{s}",'.format(s=passphrase))	# password
 		csv_file.write('"",')							# url
-		csv_file.write('"{t}",'.format(t=datetime.datetime.now()))	# notes
+		csv_file.write('"{s}",'.format(s=CSV_NOTES))	# notes
 		csv_file.write('\n')
 
 		# export private key to file
@@ -117,14 +116,16 @@ def main():
 		    secret=True,
 		    passphrase=passphrase,
 		)
-		with open(args.out + '/' + email + "_secreta.asc", 'w') as f:
+		with open(args.out + '/' + email + "_private.asc", 'w') as f:
 			f.write(ascii_armored_private_keys)
 
-	# TODO: export all public keys
-
+	# close csv file
 	csv_file.close()
 
-	print("done. Don't forget to clean up (save credentials to keepass, delete keyring...)\n")
+	# ToDo: export all public keys
+
+	# end of program
+	print("done.\n")
 
 # --------------- start of the skript ------------------
 
