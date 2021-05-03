@@ -1,36 +1,26 @@
+import argparse
 import gnupg # pip3 install python-gnupg
 import os
 import random
+import re
 import stat
 import string
 
-# sudo apt install xclip
+# tested on MacOS
 
 # ---------------------- constants -----------------------
 
-# This skript will create a PGP key for each email-address
-# Add or edit addresses, one address per line
-EMAIL_ADDRESSES = """
-"""
-
-# path to the batch file containing all commands and paramters for gpg
-BATCH_FILE = r"gpg-batch" 
-
 # path to the credentials file containing all IDs and passwords
-# file is fomatted  so can import it to keepass
-CREDENTIALS_FILE = r"gpg-credentials.csv" 
+# will be created in this skript
+# file is fomatted so can import it to keepass
+CREDENTIALS_FILE = r"pgp-credentials.csv" 
 
 # ephemeral home directory in which the keyrings will be created
 KEYRING_DIR = r"pgp-keys"
 
 
-# --------------------- variables -----------------------
 
-# list of tuples (ID, pass) for all keys
-credentials = []
-
-
-# --------------------- functions -----------------------
+# --------------------- helper function -----------------------
 
 def pass_gen():
 	alphabet = string.ascii_letters + "123456789"
@@ -40,83 +30,108 @@ def pass_gen():
 	return password
 
 
+# -------------------- main function --------------------
+
+def main():
+	
+	# list of tuples (ID, pass) for all keys
+	credentials = []
+
+	# parse arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument("mail_addresses", 
+		help="file containing mail adresses line by line")
+	parser.add_argument("out", 
+		help="output directory for the pgp-keys (will be created)")
+	args = parser.parse_args()
+
+	# check if file containing the mail-adresses exists
+	if not os.path.exists(args.mail_addresses):
+		sys.exit("mail-addresses: file does not exist.")
+
+	# parse mail addresses
+	file = open(args.mail_addresses, "r")
+	mail_addresses = file.readlines()
+
+	# check if output dir already exists and
+	if os.path.exists(args.out):
+		if input("Directory {out} already exists. Delete contents and \
+			re-create? (y/n)".format(out=arg.out))=='y':
+			os.remove(args.out)
+		else:
+			sys.exit("won't delete output dir.")
+
+	# create output directory
+	os.makedirs(args.out + '/' + KEYRING_DIR)
+	gpg = gnupg.GPG(gnupghome=KEYRING_DIR, verbose=True)
+
+	# adjust permissions (avoids PGP warning)
+	#os.chmod(args.out + '/' + KEYRING_DIR, stat.S_IRWXU)
+	#os.chmod(args.out + '/' + KEYRING_DIR + "/private-keys-v1.d", stat.S_IRWXU)
+
+	# create batch file for gpg key generation
+	#file = open(args.out + '/' + BATCH_FILE, "w")
+
+	# iterate on mail addresses
+	for mail in mail_addresses:
+
+		# check if email address is valid
+		regex = '^[a-z0-9]+[\._]?[a-z0-9]+[@]\w+[.]\w{2,3}$'
+		if not re.search(regex, mail):
+			print ("skipping invalid mail address: " + mail)
+			continue
+		
+		# generate password and write to credentials
+		passphrase = pass_gen()
+		credentials.append((mail, passphrase))
+
+		# generate key pair
+		key = gpg.gen_key(
+			name_email=mail,
+			passphrase=passphrase,
+			expire_date=0,
+			key_type="RSA",
+			key_length=4096,
+			subkey_type="RSA",
+			subkey_length=4096
+		)
+		print(key)
+
+		# export private key to file
+		ascii_armored_private_keys = gpg.export_keys(
+		    keyids=key.fingerprint,
+		    secret=True,
+		    passphrase='passphrase',
+		)
+		with open(mail + "_secreta.asc", 'w') as f:
+			f.write(ascii_armored_private_keys)
+
+	# export all public keys
+
+
+
+	# --------------------- gpg commands ------------------
+
+	
+
+	# write credentials to file
+	file = open(CREDENTIALS_FILE, "w")
+	file.write('"Group","Title","Username","Password","URL","Notes"\n')
+	for (email, passphrase) in credentials:
+		file.write('"pgp-keys",')
+		file.write('"{a}",'.format(a=email))
+
+		file.write(a + " " + p + "\n")
+	file.close()
+
+	print("done. Don't forget to clean up (save credentials to keepass, delete keyring...)\n")
+
+	print(status.ok)
+	print(status.status)
+	print(status.stderr)
+
 # --------------- start of the skript ------------------
 
-# create batch file for gpg key generation
-file = open(BATCH_FILE,"w")
-for a in iter(EMAIL_ADDRESSES.strip().splitlines()):
-
-	# create password and write to credentials
-	p = pass_gen()
-	credentials.append((a,p))
-	file.write ("Key-Type: eddsa\n")
-	file.write ("Key-Curve: Ed25519\n")
-	file.write ("Key-Usage: sign\n")
-	file.write ("Subkey-Type: ecdh\n")
-	file.write ("Subkey-Curve: Curve25519\n")
-	file.write ("Subkey-Usage: encrypt\n")
-	file.write ("Name-Email: " + a + "\n")
-	file.write ("Passphrase: " + p + "\n")
-	file.write ("Expire-Date: 0\n")
-	file.write ("%commit\n")
-file.close()
-
-# create the keyring directory, if it not yet exists
-if not os.path.exists(KEYRING_DIR):
-	os.makedirs(KEYRING_DIR)
-
-# create the private keys subdirectory, if it not yet exists
-if not os.path.exists(KEYRING_DIR + "/private-keys-v1.d"):
-	os.makedirs(KEYRING_DIR + "/private-keys-v1.d")
-
-# adjust permissions (avoids PGP warning)
-os.chmod(KEYRING_DIR, stat.S_IRWXU)
-os.chmod(KEYRING_DIR + "/private-keys-v1.d", stat.S_IRWXU)
-
-# --------------------- gpg commands ------------------
-
-# generate keys
-command = "gpg --batch --generate-key --homedir {k} {f}".format(
-	k=KEYRING_DIR, f=BATCH_FILE)
-#print(command)
-stream = os.popen(command)
-print (stream.read())
-stream.close()
-
-# export public keys, all in one file
-command = "gpg --armor --output allpubkeys.asc --export --homedir " + KEYRING_DIR
-#print(command)
-stream = os.popen(command)
-print (stream.read())
-stream.close()
-
-print ("exporting private keys one by one. Password will be in the clipboard")
-
-# iterate on all email addresses
-for (a, p) in credentials:
-
-	# Copy passphrase to clipboard
-	command = "echo {p} | tr -d '\n' | xclip -selection c".format(p=p)
-	stream = os.popen(command)
-	stream.close()
-
-	# export private keys to individual file
-	command = "gpg --batch --yes --homedir {k} --armor --output {f} --export-secret-keys {a}".format(
-		a=a, f=a + "_secreta.asc", k=KEYRING_DIR)
-	stream = os.popen(command)
-	stream.close()
-
-# write credentials to file
-file = open(CREDENTIALS_FILE, "w")
-file.write('"Group","Title","Username","Password","URL","Notes"\n')
-for (a, p) in credentials:
-	file.write('"pgp-keys",')
-	file.write('"{a}",'.format(a=a))
-
-	file.write(a + " " + p + "\n")
-file.close()
-
-# delete batchfile
-os.remove(BATCH_FILE) 
-
-print("done. Don't forget to clean up (save credentials to keepass, delete keyring...)\n")
+# when started as script, call main function
+if __name__ == "__main__":
+    main()
