@@ -48,8 +48,8 @@ def main():
 		sys.exit("email-addresses: file does not exist.")
 
 	# parse email addresses
-	file = open(args.email_addresses, "r")
-	email_addresses = file.readlines()
+	with open(args.email_addresses, 'r') as f:
+	    email_addresses = f.read().splitlines() 
 
 	# check if the user wants to create an output dir
 	if args.out:
@@ -113,7 +113,7 @@ def main():
 		# export public key to file
 		ascii_armored_public_keys = gpg.export_keys(key.fingerprint)
 		with open(args.out + '/' + email + "_public.asc", 'w') as f:
-			f.write(ascii_armored_private_keys)
+			f.write(ascii_armored_public_keys)
 		
 		# export private key to file
 		ascii_armored_private_keys = gpg.export_keys(
