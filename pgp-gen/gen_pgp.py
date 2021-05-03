@@ -110,6 +110,11 @@ def main():
 		csv_file.write('"{s}",'.format(s=CSV_NOTES))	# notes
 		csv_file.write('\n')
 
+		# export public key to file
+		ascii_armored_public_keys = gpg.export_keys(key.fingerprint)
+		with open(args.out + '/' + email + "_public.asc", 'w') as f:
+			f.write(ascii_armored_private_keys)
+		
 		# export private key to file
 		ascii_armored_private_keys = gpg.export_keys(
 		    keyids=key.fingerprint,
