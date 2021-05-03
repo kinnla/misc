@@ -1,13 +1,12 @@
 import argparse
+import datetime
 import gnupg # pip3 install python-gnupg
 import os
 import random
 import re
-import stat
+import shutil
 import string
 import sys
-import shutil
-import datetime
 
 # tested on MacOS
 
@@ -16,7 +15,7 @@ import datetime
 # path to the credentials file containing all IDs and passwords
 # will be created in this skript
 # file is fomatted so can import it to keepass
-CREDENTIALS_FILE = r"pgp-credentials.csv" 
+CSV_FILE = r"pgp-credentials.csv" 
 
 # ephemeral home directory in which the keyrings will be created
 KEYRING_DIR = r"pgp-keys"
@@ -58,7 +57,7 @@ def main():
 
 		# check if output dir already exists and
 		if os.path.exists(args.out):
-			if input("Directory {out} already exists. Delete contents and re-create? (y/n)"
+			if input("Directory '{out}' already exists. Delete contents and re-create? (y/n)"
 				.format(out=args.out))=='y':
 				shutil.rmtree(args.out)
 			else:
@@ -76,8 +75,8 @@ def main():
 	gpg = gnupg.GPG(gnupghome=args.out, verbose=False)
 
 	# credentials file (can be imported to keepass)
-	credentials_file = open(args.out + '/' + CREDENTIALS_FILE, "w")
-	credentials_file.write('"Group","Title","Username","Password","URL","Notes"\n')
+	csv_file = open(args.out + '/' + CSV_FILE, "w")
+	csv_file.write('"Group","Title","Username","Password","URL","Notes"\n')
 
 	# iterate on email addresses
 	for email in email_addresses:
@@ -104,12 +103,13 @@ def main():
 		key = gpg.gen_key(input_data)
 		
 		# write credentials to file
-		credentials_file.write('"pgp-keys",')					# group
-		credentials_file.write('"{a}",'.format(a=email))		# title
-		credentials_file.write('"{f}",'.format(f=key.fingerprint))		# username
-		credentials_file.write('"{p}",'.format(p=passphrase))	# password
-		credentials_file.write('"",')							# url
-		credentials_file.write('"{t}",'.format(t=datetime.datetime.now()))	# notes
+		csv_file.write('"pgp-keys",')					# group
+		csv_file.write('"{a}",'.format(a=email))		# title
+		csv_file.write('"{f}",'.format(f=key.fingerprint))		# username
+		csv_file.write('"{p}",'.format(p=passphrase))	# password
+		csv_file.write('"",')							# url
+		csv_file.write('"{t}",'.format(t=datetime.datetime.now()))	# notes
+		csv_file.write('\n')
 
 		# export private key to file
 		ascii_armored_private_keys = gpg.export_keys(
@@ -122,7 +122,7 @@ def main():
 
 	# TODO: export all public keys
 
-	credentials_file.close()
+	csv_file.close()
 
 	print("done. Don't forget to clean up (save credentials to keepass, delete keyring...)\n")
 
