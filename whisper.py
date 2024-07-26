@@ -41,15 +41,15 @@ def get_audio_duration(file_path):
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return float(result.stdout)
 
-def split_audio(file_path):
+def split_audio(file_path, temp_dir):
     # Split the audio file into 30-minute segments
     segment_files = []
     command = ["ffmpeg", "-i", file_path, "-f", "segment", "-segment_time", "1800", "-c", 
-                "copy", "output_audio_%03d.m4a"]    
+                "copy", os.path.join(temp_dir, "output_audio_%03d.m4a")]    
     subprocess.run(command)
-    for file in os.listdir('.'):
+    for file in sorted(os.listdir(temp_dir)):
         if file.startswith("output_audio_") and file.endswith(".m4a"):
-            segment_files.append(file)
+            segment_files.append(os.path.join(temp_dir, file))
     return segment_files
 
 def transcribe_audio(file_path):
