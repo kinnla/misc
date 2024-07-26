@@ -7,15 +7,32 @@
 import openai
 import os
 import argparse
+import subprocess
 
 # gets OPENAI_API_KEY from your environment variables
 openai = openai.OpenAI()
 
-file_path = "output_audio_000.m4a"
+def get_audio_duration(file_path):
+    # Use ffprobe to get the duration of the audio file in seconds
+    result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return float(result.stdout)
+
+def split_audio(file_path):
+    # Split the audio file into 30-minute segments
+    segment_files = []
+    output_directory = "temp_audio"
+    os.makedirs(output_directory, exist_ok=True)
+    command = ["ffmpeg", "-i", file_path, "-f", "segment", "-segment_time", "1800", "-c", 
+                "copy", f"{output_directory}/output_audio_%03d.m4a"]    
+    subprocess.run(command)
+    for file in os.listdir('.'):
+        if file.startswith("output_audio_") and file.endswith(".m4a"):
+            segment_files.append(file)
+    return segment_files
 
 def transcribe_audio(file_path):
-
-
     
     # Ensure the file exists
     if not os.path.exists(file_path):
@@ -30,11 +47,11 @@ def transcribe_audio(file_path):
                 model="whisper-1",  # Specify the Whisper model
                 file=audio_file
             )
-
-            print(transcript.text)
+            return transcript.text
 
     except Exception as e:
         print(f"An error occurred: {e}")
+        return None
 
 """
 Usage:
@@ -44,14 +61,25 @@ Usage:
 if __name__ == "__main__":
 
     # Set up argument parsing
-    parser = argparse.ArgumentParser(description="Transcribe a voice recording using OpenAI's API.")
+    parser = argparse.ArgumentParser(description=
+        "Transcribe a voice recording using OpenAI's API.")
     parser.add_argument("file_path", help="Path to the voice file")
 
     args = parser.parse_args()
     
-    # Transcribe the audio file
-    transcription = transcribe_audio(args.file_path)
+    # Check the duration of the audio file
+    duration = get_audio_duration(args.file_path)
 
-    # print transcript
-    if transcription:
-        print(transcription)
+    # If the audio is longer than 30 minutes, split it
+    if duration > 1800:
+        print("Splitting audio into 30-minute segments...")
+        segment_files = split_audio(args.file_path)
+    else:
+        segment_files = [args.file_path]
+
+    # Transcribe each segment
+    for segment in segment_files:
+        print(f"Transcribing {segment}...")
+        transcription = transcribe_audio(segment)
+        if transcription:
+            print(transcription)
