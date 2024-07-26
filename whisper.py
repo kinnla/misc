@@ -9,8 +9,30 @@ import os
 import argparse
 import subprocess
 
+# Maximum content size limit in bytes (25 MB)
+MAX_CONTENT_SIZE = 26214400
+
 # gets OPENAI_API_KEY from your environment variables
 openai = openai.OpenAI()
+
+def get_audio_bitrate(file_path):
+    # Use ffprobe to get the bitrate of the audio file in bps
+    result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", 
+                             "-show_entries", "stream=bit_rate", 
+                             "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return int(result.stdout)
+
+def transcode_to_64kbps(file_path, temp_dir):
+    # Generate a new file path for the transcoded file in the temp directory
+    base_name = os.path.basename(file_path)
+    new_file_path = os.path.join(temp_dir, base_name)
+    
+    # Transcode the file to 64 kbps using ffmpeg
+    command = ["ffmpeg", "-i", file_path, "-b:a", "64k", new_file_path]
+    subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    return new_file_path
 
 def get_audio_duration(file_path):
     # Use ffprobe to get the duration of the audio file in seconds
@@ -22,10 +44,8 @@ def get_audio_duration(file_path):
 def split_audio(file_path):
     # Split the audio file into 30-minute segments
     segment_files = []
-    output_directory = "temp_audio"
-    os.makedirs(output_directory, exist_ok=True)
     command = ["ffmpeg", "-i", file_path, "-f", "segment", "-segment_time", "1800", "-c", 
-                "copy", f"{output_directory}/output_audio_%03d.m4a"]    
+                "copy", "output_audio_%03d.m4a"]    
     subprocess.run(command)
     for file in os.listdir('.'):
         if file.startswith("output_audio_") and file.endswith(".m4a"):
@@ -66,7 +86,18 @@ if __name__ == "__main__":
     parser.add_argument("file_path", help="Path to the voice file")
 
     args = parser.parse_args()
+    temp_dir = "temp_audio"
+    os.makedirs(temp_dir, exist_ok=True)
     
+    # Check the file size
+    file_size = os.path.getsize(args.file_path)
+    if file_size > MAX_CONTENT_SIZE:
+        # Check the bitrate
+        bitrate = get_audio_bitrate(args.file_path)
+        if bitrate > 64000:
+            print(f"Bitrate ({bitrate} bps) is greater than 64 kbps. Transcoding the file...")
+            args.file_path = transcode_to_64kbps(args.file_path, temp_dir)
+
     # Check the duration of the audio file
     duration = get_audio_duration(args.file_path)
 
