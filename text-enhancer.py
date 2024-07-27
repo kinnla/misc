@@ -40,7 +40,7 @@ def enhance_text(file_path):
 		temperature=0
 	)
 	
-	return completion.choices[0].message
+	return completion.choices[0].message['content']
 
 if __name__ == "__main__":
 	# Set up argument parsing
