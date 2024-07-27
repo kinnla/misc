@@ -75,7 +75,7 @@ def transcribe_audio(file_path):
 
 """
 Usage:
-./whisper.py recording.m4a > transcript.txt
+./whisper.py recording.m4a
 """
 
 if __name__ == "__main__":
@@ -108,9 +108,12 @@ if __name__ == "__main__":
     else:
         segment_files = [args.file_path]
 
-    # Transcribe each segment
-    for segment in segment_files:
-        print(f"Transcribing {segment}...")
-        transcription = transcribe_audio(segment)
-        if transcription:
-            print(transcription)
+    # Transcribe each segment and write to text file
+    transcript_path = os.path.join(temp_dir, "transcript.txt")
+    with open(transcript_path, 'w') as transcript_file:
+        for segment in segment_files:
+            print(f"Transcribing {segment}...")
+            transcription = transcribe_audio(segment)
+            if transcription:
+                transcript_file.write(transcription + "\n")
+                print(f"Segment {segment} transcribed successfully.")
