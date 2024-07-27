@@ -15,7 +15,7 @@ import os
 
 client = OpenAI()
 
-MODEL = "gpt-4o-mini"  # Specify the model you want to use
+MODEL = "gpt-4o"  # Specify the model you want to use
 PROMPT = """Du bist eine Stenographin und Sekretärin und hervorragend darin, Texte \
 mitzuschreiben und zu formulieren. Anbei ein Transkript einer Sprachnotiz, die ich \
 gerade eingesprochen habe. Korrigiere Grammatik und Rechtschreibung, und forme den \
@@ -24,23 +24,53 @@ der Gedankengang erhalten bleibt. Es geht nicht um eine Zusammenfassung. Struktu
 den Text in geeignete Abschnitte und finde Zwischenüberschriften. Nutze Markdown \
 als Ausgabeformat. Gib den Text dann aus, so dass ich ihn zu Protokoll geben kann."""
 
+MAX_CHUNK_SIZE = 10000
+
+
+def find_slice_end(text, start_index, slice_length):
+    end_index = start_index + slice_length
+    if end_index >= len(text):
+        return len(text)
+
+    # Find the next period after the slice length
+    period_index = text.find('.', end_index)
+    if period_index == -1:
+        return len(text)  # If no period found, return the end of the text
+    return period_index + 1
 
 def enhance_text(file_path):
+	
 	# Read the input text file
 	with open(file_path, 'r') as file:
 		raw_text = file.read()
 	
-	# Generate structured text using OpenAI API
-	completion = client.chat.completions.create(
-		model=MODEL,
-		messages=[
-			{"role": "system", "content": PROMPT},
-			{"role": "user", "content": raw_text}
-		],
-		temperature=0
-	)
-	
-	return completion.choices[0].message['content']
+    text_length = len(raw_text)
+    if text_length <= MAX_CHUNK_SIZE:
+        slices = [raw_text]
+    else:
+        num_slices = math.ceil(text_length / MAX_CHUNK_SIZE)
+        slice_length = text_length // num_slices
+        slices = []
+        
+        start_index = 0
+        for _ in range(num_slices):
+            end_index = find_slice_end(raw_text, start_index, slice_length)
+            slices.append(raw_text[start_index:end_index])
+            start_index = end_index
+    
+    structured_text = ""
+    for slice in slices:
+        completion = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": PROMPT},
+                {"role": "user", "content": slice}
+            ],
+            temperature=0
+        )
+        structured_text += completion.choices[0].message.content + "\n"
+    
+    return structured_text
 
 if __name__ == "__main__":
 	# Set up argument parsing
