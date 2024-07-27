@@ -26,34 +26,34 @@ als Ausgabeformat. Gib den Text dann aus, so dass ich ihn zu Protokoll geben kan
 
 
 def enhance_text(file_path):
-    # Read the input text file
-    with open(file_path, 'r') as file:
-        raw_text = file.read()
-    
-    # Generate structured text using OpenAI API
+	# Read the input text file
+	with open(file_path, 'r') as file:
+		raw_text = file.read()
+	
+	# Generate structured text using OpenAI API
 	completion = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": PROMPT},
-            {"role": "user", "content": raw_text}
-        ],
-        temperature=0
-    )
-    
-    return completion.choices[0].message
+		model=MODEL,
+		messages=[
+			{"role": "system", "content": PROMPT},
+			{"role": "user", "content": raw_text}
+		],
+		temperature=0
+	)
+	
+	return completion.choices[0].message
 
 if __name__ == "__main__":
-    # Set up argument parsing
-    parser = argparse.ArgumentParser(description="Enhance and structure a plain text.")
-    parser.add_argument("file_path", help="Path to the text file")
-    args = parser.parse_args()
-    
-    # Get the structured text
-    structured_text = enhance_text(args.file_path)
-    
-    # Save the structured text to a markdown file
-    output_file = args.file_path.replace(".txt", "_structured.md")
-    with open(output_file, 'w') as file:
-        file.write(structured_text)
-    
-    print(f"Structured text saved to {output_file}")
+	# Set up argument parsing
+	parser = argparse.ArgumentParser(description="Enhance and structure a plain text.")
+	parser.add_argument("file_path", help="Path to the text file")
+	args = parser.parse_args()
+	
+	# Get the structured text
+	structured_text = enhance_text(args.file_path)
+	
+	# Save the structured text to a markdown file
+	output_file = args.file_path.replace(".txt", "_structured.md")
+	with open(output_file, 'w') as file:
+		file.write(structured_text)
+	
+	print(f"Structured text saved to {output_file}")
