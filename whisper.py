@@ -1,8 +1,18 @@
-#!/Users/zoppke/venvs/default/bin/python3
+#!~/venvs/default/bin/python3
 # coding: utf-8
 
-# Create 30-minute slices of large M4A files
-# ffmpeg -i recording.m4a -f segment -segment_time 1800 -c copy output_audio_%03d.m4a
+"""
+This script processes audio files for transcription using OpenAI’s API. It first checks if 
+the file size exceeds a specified limit (25 MB). If so, it evaluates the audio bitrate and,
+if necessary, transcodes the file to a lower bitrate of 64 kbps to reduce file size. 
+The script then checks the audio duration; if it exceeds 30 minutes, the file is split 
+into 30-minute segments. Each segment is transcribed, and the resulting text is saved 
+into a transcript.txt file in a temporary directory. This script ensures efficient handling 
+and transcription of large audio files, maintaining quality while adhering to size constraints.
+
+Usage:
+./whisper.py recording.m4a
+"""
 
 import openai
 import os
@@ -72,11 +82,6 @@ def transcribe_audio(file_path):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
-
-"""
-Usage:
-./whisper.py recording.m4a
-"""
 
 if __name__ == "__main__":
 
