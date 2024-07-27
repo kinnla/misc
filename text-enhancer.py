@@ -1,4 +1,4 @@
-#!~/venvs/default/bin/python3
+#!/usr/bin/env python3
 # coding: utf-8
 
 """
@@ -9,34 +9,45 @@ Usage:
 ./text-enhancer.py raw-text.txt
 """
 
-
-
-
 import openai
+import argparse
+import os
 
+# Set the OpenAI API key from your environment variables
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# gets OPENAI_API_KEY from your environment variables
-openai = openai.OpenAI()
+MODEL = "gpt-4o-mini"  # Specify the model you want to use
 
-
-
-response = client.chat.completions.create(
-    model=MODEL,
-    messages=[
-    {"role": "system", "content":"""You are generating a transcript summary. Create a summary of the provided transcription. Respond in Markdown."""},
-    {"role": "user", "content": [
-        {"type": "text", "text": f"The audio transcription is: {transcription.text}"}
+def enhance_text(file_path):
+    # Read the input text file
+    with open(file_path, 'r') as file:
+        raw_text = file.read()
+    
+    # Generate structured text using OpenAI API
+    response = openai.ChatCompletion.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": """You are generating a transcript summary. Create a summary of the provided transcription. Respond in Markdown."""},
+            {"role": "user", "content": raw_text}
         ],
-    }
-    ],
-    temperature=0,
-)
-
-
+        temperature=0
+    )
+    
+    structured_text = response['choices'][0]['message']['content']
+    return structured_text
 
 if __name__ == "__main__":
-
     # Set up argument parsing
-    parser = argparse.ArgumentParser(description=
-        "Enhance and structure a plain text.")
-    parser.add_argument("file_path", help="Path to the voice file")
+    parser = argparse.ArgumentParser(description="Enhance and structure a plain text.")
+    parser.add_argument("file_path", help="Path to the text file")
+    args = parser.parse_args()
+    
+    # Get the structured text
+    structured_text = enhance_text(args.file_path)
+    
+    # Save the structured text to a markdown file
+    output_file = args.file_path.replace(".txt", "_structured.md")
+    with open(output_file, 'w') as file:
+        file.write(structured_text)
+    
+    print(f"Structured text saved to {output_file}")
