@@ -1,4 +1,4 @@
-#!~/venvs/default/bin/python3
+#! /Users/zoppke/venvs/default/bin/python3
 # coding: utf-8
 
 """
@@ -9,12 +9,11 @@ Usage:
 ./text-enhancer.py raw-text.txt
 """
 
-import openai
+from openai import OpenAI
 import argparse
 import os
 
-# Set the OpenAI API key from your environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI()
 
 MODEL = "gpt-4o-mini"  # Specify the model you want to use
 PROMPT = """Du bist eine Stenographin und Sekretärin und hervorragend darin, Texte \
@@ -32,7 +31,7 @@ def enhance_text(file_path):
         raw_text = file.read()
     
     # Generate structured text using OpenAI API
-    response = openai.ChatCompletion.create(
+	completion = client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": PROMPT},
@@ -41,8 +40,7 @@ def enhance_text(file_path):
         temperature=0
     )
     
-    structured_text = response['choices'][0]['message']['content']
-    return structured_text
+    return completion.choices[0].message
 
 if __name__ == "__main__":
     # Set up argument parsing
