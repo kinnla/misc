@@ -19,17 +19,17 @@ client = OpenAI()
 """
 We generate the structured version in several steps.
 1. generate chunks of raw text with a MAX_CHUNK_SIZE of characters.
-2. For any chunk create a summary of 2-3 sentences.
+2. For any chunk create a summary sentence.
 3. For any raw text chunk, ask the model to do the proofread and provide the summaries 
 produced in the step before. 
 """
 
-MAX_CHUNK_SIZE = 7000
+MAX_CHUNK_SIZE = 8000
 
 SUMMARY_MODEL = "gpt-4o-mini" # simple task, so use a simple model
 SUMMARY_PROMPT = """Das ist ein Abschnitt aus einem längeren Text. 
-Fasse den Abschnitt in einem Satz zusammen. Vermeide Floskeln wie 'Der Text...' 
-oder 'Der Autor...' oder 'Der Abschnitt'. Gib direkt wieder, was der Abschnitt enthält."""
+Fasse den Abschnitt in einem Satz zusammen. Gib direkt wieder, 
+was der Abschnitt enthält, behalte die Ich-Perspektive."""
 
 PROOFREAD_MODEL = "gpt-4o" # complex task, so use an enhanced model
 PROOFREAD_PROMPT = """Du bist ein ausgezeichneter Lektor, der einen Text korrektur liest.
@@ -66,8 +66,8 @@ def get_summary(text):
         ],
         temperature=0
     )
-    print ("summary")
-    print (completion.choices[0].message.content.strip())
+    # print ("summary")
+    # print (completion.choices[0].message.content.strip())
     return completion.choices[0].message.content.strip()
 
 def proofread_text(chunk, chunk_number, all_summaries):
@@ -80,10 +80,10 @@ def proofread_text(chunk, chunk_number, all_summaries):
         ],
         temperature=0
     )
-    print ("prompt")
-    print (prompt)
-    print ("proofread")
-    print (completion.choices[0].message.content.strip())
+    # print ("prompt")
+    # print (prompt)
+    # print ("proofread")
+    # print (completion.choices[0].message.content.strip())
     return completion.choices[0].message.content.strip()
 
 def enhance_text(file_path):
@@ -117,7 +117,7 @@ def enhance_text(file_path):
     # Proofread each chunk with the context of all summaries
     for i, slice in enumerate(slices, start=1):
         enhanced_chunk = proofread_text(slice, i, all_summaries)
-        structured_text += enhanced_chunk + "\n"
+        structured_text += enhanced_chunk + "\n\n"
     
     return structured_text
 
