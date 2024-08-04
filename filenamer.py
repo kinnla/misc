@@ -2,7 +2,8 @@
 # coding: utf-8
 
 """
-This script reads the contents of a PDF and then renames it with an adequate name.
+This script reads the contents of a PDF and then renames it with an adequate name. 
+We use Llama 3.1 as LLM via Ollama.
 
 Usage:
 ./filenamer.py file.pdf
@@ -15,6 +16,7 @@ import os
 import re
 import sys
 
+# prompt to be passed to the LLM
 prompt = """The following is the contents of a PDF document. Please read it and find
 - the company name
 - the subject (or "Betreff")
@@ -29,6 +31,9 @@ If the doc is in english, use the english terms. Wenn das Dokument auf Deutsch i
 
 As a reply to this prompt, please be short and concise, and only reply with the file name. Thanks in advance!
 """
+
+# Maximum context window of the LLM
+context_window = 128000
 
 def read_pdf(file_path):
     try:
@@ -45,6 +50,13 @@ def read_pdf(file_path):
 def get_new_filename(prompt, content):
     try:
         client = ollama.Client()
+
+        # Truncate content if it exceeds context_window
+        encoded_content = content.encode('utf-8')
+        if len(encoded_content) > context_window:
+            print (len(encoded_content))
+            content = encoded_content[:context_window].decode('utf-8', errors='ignore')
+        
         formatted_prompt = prompt.format(pdf=content)  # Formatting the hardcoded prompt
         response = client.generate(prompt=formatted_prompt, model="llama3.1", options={'temperature': 0})
 
