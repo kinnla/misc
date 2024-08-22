@@ -107,18 +107,38 @@ def rename_file(original_path, new_name):
     except Exception as e:
         print(f"An error occurred while renaming the file: {e}")
 
-def main():
-    parser = argparse.ArgumentParser(description="Rename a PDF file based on its content using Llama 3.1 model.")
-    parser.add_argument("file_paths", nargs='+', help="The paths to the PDF files to be renamed")    
-    args = parser.parse_args()
-
-    for file_path in args.file_paths:
+def process_files(file_paths):
+    for file_path in file_paths:
         if file_path.lower().endswith(".pdf"):
             content = read_pdf(file_path)
             if content:
                 new_name = get_new_filename(prompt, content)
                 if new_name:
                     rename_file(file_path, new_name)
+
+def get_all_pdfs(directory):
+    pdf_files = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.lower().endswith(".pdf"):
+                pdf_files.append(os.path.join(root, file))
+    return pdf_files
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Rename PDF files based on their content using Llama 3.1 model.")
+    parser.add_argument("paths", nargs='+', help="The paths to the PDF files or folders containing PDF files to be renamed")
+    args = parser.parse_args()
+
+    all_files = []
+    for path in args.paths:
+        if os.path.isfile(path) and path.lower().endswith(".pdf"):
+            all_files.append(path)
+        elif os.path.isdir(path):
+            all_files.extend(get_all_pdfs(path))
+
+    if all_files:
+        process_files(all_files)
 
 if __name__ == "__main__":
     if not sys.stdin.isatty():
