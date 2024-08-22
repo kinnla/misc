@@ -7,12 +7,12 @@ that do not contain embedded text. The text of this PDF will be extracted
 via ocrmypdf. The file will be replaced by a copy with that text embedded.
 
 Usage:
-./ocrmypdf-recirsive.py directory
+./ocrmypdf-recursive.py directory
 """
 
 import os
 import sys
-import subprocess
+import ocrmypdf
 from PyPDF2 import PdfReader
 
 def has_embedded_text(pdf_path):
@@ -31,10 +31,10 @@ def process_pdf_with_ocrmypdf(pdf_path):
     """Führt OCR mit ocrmypdf durch und überschreibt die Originaldatei."""
     temp_output_path = pdf_path.replace(".pdf", "_temp.pdf")
     try:
-        subprocess.run(["ocrmypdf", pdf_path, temp_output_path], check=True)
+        ocrmypdf.ocr(pdf_path, temp_output_path)
         os.replace(temp_output_path, pdf_path)
         print(f"OCR erfolgreich für: {pdf_path}")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"OCR fehlgeschlagen für {pdf_path}: {e}")
         if os.path.exists(temp_output_path):
             os.remove(temp_output_path)
