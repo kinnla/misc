@@ -7,6 +7,7 @@ We use Llama 3.1 as LLM via Ollama.
 
 Usage:
 ./filenamer.py file.pdf
+./filenamer.py directory
 """
 
 import fitz  # PyMuPDF
@@ -42,6 +43,7 @@ def read_pdf(file_path):
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
             content += page.get_text()
+        print(f"Content extracted from {file_path}: {content[:500]}...")  # Debugging-Ausgabe (erste 500 Zeichen)
         return content
     except Exception as e:
         print(f"An error occurred while reading the PDF: {e}")
@@ -54,7 +56,7 @@ def get_new_filename(prompt, content):
         # Truncate content if it exceeds context_window
         encoded_content = content.encode('utf-8')
         if len(encoded_content) > context_window:
-            print (len(encoded_content))
+            print (f"File content exceeds context length: {len(encoded_content)}. Truncate it to {128000} characters.")
             content = encoded_content[:context_window].decode('utf-8', errors='ignore')
         
         formatted_prompt = prompt.format(pdf=content)  # Formatting the hardcoded prompt
@@ -120,8 +122,10 @@ def get_all_pdfs(directory):
     pdf_files = []
     for root, _, files in os.walk(directory):
         for file in files:
+            print(f"Checking file: {file}")  # Debugging-Ausgabe
             if file.lower().endswith(".pdf"):
                 pdf_files.append(os.path.join(root, file))
+                print(f"Found PDF: {file}")  # Debugging-Ausgabe
     return pdf_files
 
 
@@ -132,12 +136,22 @@ def main():
 
     all_files = []
     for path in args.paths:
+        if not os.path.exists(path):
+            print(f"Error: The path '{path}' does not exist.")
+            continue
+
         if os.path.isfile(path) and path.lower().endswith(".pdf"):
             all_files.append(path)
         elif os.path.isdir(path):
-            all_files.extend(get_all_pdfs(path))
+            pdf_files = get_all_pdfs(path)
+            if not pdf_files:
+                print(f"Error: The directory '{path}' is empty or contains no PDF files.")
+            else:
+                all_files.extend(pdf_files)
 
-    if all_files:
+    if not all_files:
+        print("Error: No valid PDF files found to process.")
+    else:
         process_files(all_files)
 
 if __name__ == "__main__":
