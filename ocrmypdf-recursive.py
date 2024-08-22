@@ -14,17 +14,27 @@ import os
 import sys
 import ocrmypdf
 from PyPDF2 import PdfReader
+from PyPDF2.errors import PdfReadError
 
 def has_embedded_text(pdf_path):
     """Prüft, ob eine PDF-Datei eingebetteten Text enthält."""
     try:
         reader = PdfReader(pdf_path)
+        if reader.is_encrypted:
+            try:
+                reader.decrypt('')
+            except:
+                print(f"Die Datei ist verschlüsselt und kann nicht gelesen werden: {pdf_path}")
+                return True  # Überspringe diese Datei
         for page in reader.pages:
             if page.extract_text().strip():
                 return True
         return False
-    except Exception as e:
+    except PdfReadError as e:
         print(f"Fehler beim Lesen der PDF-Datei {pdf_path}: {e}")
+        return False
+    except Exception as e:
+        print(f"Allgemeiner Fehler beim Verarbeiten der Datei {pdf_path}: {e}")
         return False
 
 def process_pdf_with_ocrmypdf(pdf_path, check_only=False):
