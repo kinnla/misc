@@ -17,49 +17,49 @@ from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError
 
 def has_embedded_text(pdf_path):
-    """Prüft, ob eine PDF-Datei eingebetteten Text enthält."""
+    """Checks if a PDF file contains embedded text."""
     try:
         reader = PdfReader(pdf_path)
         if reader.is_encrypted:
             try:
                 reader.decrypt('')
             except:
-                print(f"Die Datei ist verschlüsselt und kann nicht gelesen werden: {pdf_path}")
-                return True  # Überspringe diese Datei
+                print(f"The file is encrypted and cannot be read: {pdf_path}")
+                return True  # Skip this file
         for page in reader.pages:
             if page.extract_text().strip():
                 return True
         return False
     except PdfReadError as e:
-        print(f"Fehler beim Lesen der PDF-Datei {pdf_path}: {e}")
+        print(f"Error reading the PDF file {pdf_path}: {e}")
         return False
     except Exception as e:
-        print(f"Allgemeiner Fehler beim Verarbeiten der Datei {pdf_path}: {e}")
+        print(f"General error processing the file {pdf_path}: {e}")
         return False
 
 def process_pdf_with_ocrmypdf(pdf_path, check_only=False):
-    """Führt OCR mit ocrmypdf durch und überschreibt die Originaldatei oder prüft nur."""
+    """Performs OCR with ocrmypdf and overwrites the original file or just checks."""
     if check_only:
         if has_embedded_text(pdf_path):
-            print(f"Die Datei enthält Text: {pdf_path}")
+            print(f"The file contains text: {pdf_path}")
         else:
-            print(f"Die Datei enthält keinen Text: {pdf_path}")
+            print(f"The file does not contain text: {pdf_path}")
     else:
         if not has_embedded_text(pdf_path):
             temp_output_path = pdf_path.replace(".pdf", "_temp.pdf")
             try:
                 ocrmypdf.ocr(pdf_path, temp_output_path)
                 os.replace(temp_output_path, pdf_path)
-                print(f"OCR erfolgreich für: {pdf_path}")
+                print(f"OCR successful for: {pdf_path}")
             except Exception as e:
-                print(f"OCR fehlgeschlagen für {pdf_path}: {e}")
+                print(f"OCR failed for {pdf_path}: {e}")
                 if os.path.exists(temp_output_path):
                     os.remove(temp_output_path)
         else:
-            print(f"Text bereits vorhanden in: {pdf_path}. Überspringe Datei.")
+            print(f"Text already present in: {pdf_path}. Skipping file.")
 
 def process_directory(directory, check_only=False):
-    """Geht rekursiv durch ein Verzeichnis und bearbeitet oder prüft alle PDFs."""
+    """Recursively processes or checks all PDFs in a directory."""
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(".pdf"):
@@ -68,14 +68,14 @@ def process_directory(directory, check_only=False):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Verwendung: python script.py /Pfad/zum/Verzeichnis [--check-only]")
+        print("Usage: python script.py /path/to/directory [--check-only]")
         sys.exit(1)
 
     directory_to_scan = sys.argv[1]
     check_only = "--check-only" in sys.argv
 
     if not os.path.isdir(directory_to_scan):
-        print(f"Das angegebene Verzeichnis existiert nicht: {directory_to_scan}")
+        print(f"The specified directory does not exist: {directory_to_scan}")
         sys.exit(1)
 
     process_directory(directory_to_scan, check_only=check_only)
