@@ -57,27 +57,37 @@ def parse_dialogs(data):
     return sorted(dialogs, key=lambda x: x["date"])
 
 def clean_text(text):
-    
-    # Erkennen von Listen mit Spiegelstrichen
     lines = text.split('\n')
     in_list = False
     cleaned_lines = []
+    list_number = 0
     
     for line in lines:
         stripped_line = line.strip()
-        if stripped_line.startswith('- '):
+        # Check if line starts a new numbered section
+        if stripped_line.startswith(('1. ', '2. ', '3. ')):
+            # Add the number and text before the list
+            list_number += 1
+            header_text = stripped_line[3:]  # Skip the "n. " part
+            if header_text.endswith(':'):
+                cleaned_lines.append(f'{list_number}. {header_text}')
+            else:
+                cleaned_lines.append(f'{list_number}. {header_text}\\\\')
+        # Check if it's a bullet point
+        elif stripped_line.startswith('- '):
             if not in_list:
-                cleaned_lines.append('\\vspace{0.5\\baselineskip}\\begin{itemize}\\setlength{\\itemsep}{0pt}\\setlength{\\parskip}{0pt}')
+                cleaned_lines.append('\\begin{itemize}\\setlength{\\itemsep}{0pt}\\setlength{\\parskip}{0pt}')
                 in_list = True
             cleaned_lines.append('\\item ' + stripped_line[2:])
         else:
             if in_list:
-                cleaned_lines.append('\\end{itemize}\\vspace{0.5\\baselineskip}')
+                cleaned_lines.append('\\end{itemize}')
                 in_list = False
-            cleaned_lines.append(stripped_line)
+            if stripped_line:  # Only add backslashes for non-empty lines
+                cleaned_lines.append(stripped_line + '\\\\')
     
     if in_list:
-        cleaned_lines.append('\\end{itemize}\\vspace{0.5\\baselineskip}')
+        cleaned_lines.append('\\end{itemize}')
     
     return '\n'.join(cleaned_lines).strip()
 
@@ -97,17 +107,17 @@ def generate_latex(dialogs, output_path):
     latex_content += "\\usepackage[ngerman]{babel}\n"
     latex_content += "\\usepackage[margin=2.5cm]{geometry}\n"
     latex_content += "\\begin{document}\n"
-    latex_content += "\\section*{Dialog}\n"
+    latex_content += "\\section*{Dialog}\n\n"
 
     for dialog in dialogs:
-        # Escape special LaTeX characters in speaker name
         speaker = dialog['speaker'].replace('_', '\\_').replace('&', '\\&')
-        latex_content += f"\\textbf{{{speaker}}} ({dialog['date'].strftime('%d.%m.%Y %H:%M')}):\\\\\n"
-        latex_content += f"{dialog['text']}\\\\\n\\bigskip\n"
+        date_str = dialog['date'].strftime('%d.%m.%Y %H:%M')
+        latex_content += f"\\textbf{{{speaker}}} ({date_str}):\\\\\n"
+        latex_content += f"{dialog['text']}\n\n"
 
     latex_content += "\\end{document}"
     
-    # Anführungszeichen ersetzen - mit raw string für die Ersetzung
+    # Replace quotes
     latex_content = re.sub(r'"([^"]*)"', r"``\1''", latex_content)
     
     with open(output_path, 'w', encoding='utf-8') as f:
