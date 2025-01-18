@@ -69,10 +69,7 @@ def clean_text(text):
             # Add the number and text before the list
             list_number += 1
             header_text = stripped_line[3:]  # Skip the "n. " part
-            if header_text.endswith(':'):
-                cleaned_lines.append(f'{list_number}. {header_text}')
-            else:
-                cleaned_lines.append(f'{list_number}. {header_text}\\\\')
+            cleaned_lines.append(f'{list_number}. {header_text}')
         # Check if it's a bullet point
         elif stripped_line.startswith('- '):
             if not in_list:
@@ -112,8 +109,8 @@ def generate_latex(dialogs, output_path):
     for dialog in dialogs:
         speaker = dialog['speaker'].replace('_', '\\_').replace('&', '\\&')
         date_str = dialog['date'].strftime('%d.%m.%Y %H:%M')
-        latex_content += f"\\textbf{{{speaker}}} ({date_str}):\\\\\n"
-        latex_content += f"{dialog['text']}\n\n"
+        latex_content += f"\\noindent\\textbf{{{speaker}}} ({date_str}):\\\\\n"
+        latex_content += f"{dialog['text']}\\\\\n"
 
     latex_content += "\\end{document}"
     
