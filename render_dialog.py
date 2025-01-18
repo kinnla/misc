@@ -57,8 +57,6 @@ def parse_dialogs(data):
     return sorted(dialogs, key=lambda x: x["date"])
 
 def clean_text(text):
-    # Replace quotation marks
-    text = re.sub(r'"([^"]*)"', r'``\1\'\'', text)
     
     # Erkennen von Listen mit Spiegelstrichen
     lines = text.split('\n')
@@ -108,6 +106,9 @@ def generate_latex(dialogs, output_path):
         latex_content += f"{dialog['text']}\\\\\n\\bigskip\n"
 
     latex_content += "\\end{document}"
+    
+    # Anführungszeichen ersetzen - mit raw string für die Ersetzung
+    latex_content = re.sub(r'"([^"]*)"', r"``\1''", latex_content)
     
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(latex_content)
