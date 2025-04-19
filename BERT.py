@@ -192,6 +192,14 @@ def get_user_input_realtime(debug_mode=False):
             
             # Auto-submit on space (simplified - just one space is enough)
             if char == ' ':
+                # If this is the first character and it's a space,
+                # we're probably just triggering the LLM without adding content
+                if len(chars) == 1 and chars[0] == ' ':
+                    # Remove the space we just added both from array and screen
+                    chars.pop()  # Remove the space
+                    sys.stdout.write('\b')  # Move back one character
+                    sys.stdout.flush()
+                
                 print_debug("Space detected, ending input", debug_mode)
                 break
                 
@@ -333,9 +341,8 @@ def main():
                     # Just append the punctuation without space
                     sentence += input_text
                     
-                # Add space after sentence-ending punctuation
-                if input_text in ['.', '!', '?']:
-                    sentence += " "
+                # Add space after ALL punctuation marks
+                sentence += " "
             elif sentence.endswith(" "):
                 # If sentence already ends with space, just append
                 sentence += input_text
@@ -364,10 +371,12 @@ def main():
                 sys.stdout.flush()
                 sentence += next_word
                 
-                # Add space after sentence-ending punctuation
-                if next_word in ['.', '!', '?']:
-                    sys.stdout.write(" ")
-                    sys.stdout.flush()
+                # Add space after ANY punctuation (not just sentence-ending ones)
+                # This makes it easier for the user to continue typing
+                # Double-check that we always add the space after punctuation
+                sys.stdout.write(" ")
+                sys.stdout.flush()
+                if not sentence.endswith(" "):  # Ensure we don't add double spaces
                     sentence += " "
             else:
                 # Regular word - add space before if needed
