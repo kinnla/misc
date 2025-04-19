@@ -126,120 +126,127 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         print(f"\nFehler bei der Textgenerierung: {e}")
         return "..."
 
-def get_user_input_realtime():
-    """Get user input character by character, ending at non-alphanumeric chars"""
+def get_user_input_realtime(debug_mode=False):
+    """Get user input character by character, ending only at specific punctuation or Enter"""
     chars = []
     auto_submit = False
     last_char = None
-    composing_char = False  # Flag for macOS dead key composition (like Option+u)
-    deadkey_buffer = ""  # Buffer to handle deadkeys on macOS
+    
+    # Set of commonly used special characters including umlauts and accents
+    special_chars = {
+        'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü',  # German umlauts
+        'á', 'é', 'í', 'ó', 'ú',        # Acute accents
+        'à', 'è', 'ì', 'ò', 'ù',        # Grave accents
+        'â', 'ê', 'î', 'ô', 'û',        # Circumflex
+        'ë', 'ï', 'ÿ',                  # Diaeresis
+        'ç', 'Ç',                       # Cedilla
+        'ñ', 'Ñ'                        # Tilde
+    }
+    
+    # Define which characters should trigger auto-submit
+    auto_submit_chars = ['.', ',', '!', '?', ':', ';']
+    
+    # Buffer to collect bytes for multi-byte characters (like umlauts)
+    # This will help handling option+u followed by a vowel on macOS
+    byte_buffer = bytearray()
+    
+    if debug_mode:
+        sys.stdout.write("[Debug: Input started]\n")
+        sys.stdout.flush()
     
     while True:
         try:
             # Get a single character
-            char = getch()
+            c = getch()
             
             # Skip empty input
-            if not char:
+            if not c:
                 continue
+            
+            # Add to buffer if it's a byte
+            if isinstance(c, bytes):
+                byte_buffer.extend(c)
                 
-            # Handle byte input and convert to string safely
-            if isinstance(char, bytes):
+                # Try to decode the buffer
                 try:
-                    char = char.decode('utf-8', errors='replace')
+                    # Try to decode the current buffer
+                    char = byte_buffer.decode('utf-8')
+                    
+                    # If we get here, it's a valid UTF-8 sequence
+                    byte_buffer = bytearray()  # Clear the buffer
+                    
+                    if debug_mode:
+                        sys.stdout.write(f"[char:{ord(char)}]")
+                        sys.stdout.flush()
                 except UnicodeDecodeError:
-                    # Skip invalid characters
+                    # Not a complete UTF-8 sequence yet, wait for more bytes
                     continue
+            else:
+                # Already a string (should be rare with getch)
+                char = c
             
-            # Handle dead keys (option+u on macOS)
-            # When Option+u is pressed, some systems report special characters
-            if char in ['\x00', '\x1b', '\xc2\xa8', '¨', '˙', '´', '`', '^']:
-                composing_char = True
-                deadkey_buffer = char  # Store the deadkey
-                # Don't add it to the input or display it
-                continue
+            # Handle control characters and special keys
             
-            # If we just saw a dead key, this char might be the base vowel
-            if composing_char:
-                composing_char = False
-                
-                # On macOS, pressing Option+u and then 'o' directly produces 'ö'
-                # Let's try to detect common umlaut combinations
-                if deadkey_buffer in ['¨', '\xc2\xa8'] and char.lower() in 'aeiou':
-                    # Map to the corresponding umlaut
-                    umlaut_map = {
-                        'a': 'ä', 'A': 'Ä',
-                        'e': 'ë', 'E': 'Ë',
-                        'i': 'ï', 'I': 'Ï',
-                        'o': 'ö', 'O': 'Ö',
-                        'u': 'ü', 'U': 'Ü'
-                    }
-                    # Replace with the actual umlaut
-                    char = umlaut_map.get(char, char)
-                
-                deadkey_buffer = ""  # Clear the buffer
-                # Continue with normal processing for the resulting character
-            
-            # ASCII values for Backspace (8) or DEL (127)
+            # Check for backspace (ASCII 8 or DEL 127)
             if char in ['\b', '\x7f']:
                 if chars:  # Only delete if there are characters
-                    chars.pop()  # Remove the last character from the list
-                    # Output Backspace+Space+Backspace to erase the character
+                    chars.pop()  # Remove the last character
+                    # Output backspace+space+backspace to erase the character on screen
                     sys.stdout.write('\b \b')
                     sys.stdout.flush()
                 continue
             
-            # Enter key ends input
+            # Enter key always ends input
             if char in ['\r', '\n']:
-                # Always end input on Enter
                 auto_submit = True
                 break
             
-            # Try to handle the character more safely
-            try:
-                # Filter out control characters
-                if ord(char) < 32 and char not in ['\r', '\n', '\t', '\b']:
-                    continue
-                    
-                # Add character to input and display it
-                chars.append(char)
-                sys.stdout.write(char)
-                sys.stdout.flush()
-                last_char = char
-                
-                # Check if the character should trigger auto-submit
-                # Punctuation marks that should trigger auto-submit
-                auto_submit_chars = ['.', ',', '!', '?', ':', ';', '-', ')', ']', '}', '/']
-                
-                # If it's a punctuation mark, auto-submit
-                if char in auto_submit_chars:
-                    auto_submit = True
-                    break
-                    
-                # Special handling for space: only auto-submit if the last character in the text was also a space
-                if char == ' ':
-                    # Check if the input already has a space (double space)
-                    if len(chars) > 1 and chars[-2] == ' ':
-                        auto_submit = True
-                        break
-                
-                # Don't auto-submit for umlauts or other special characters
-                # We'll only auto-submit for specific punctuation marks and double spaces
-                
-            except ValueError:
-                # Skip characters that cause problems
+            # Filter out other control characters
+            if ord(char) < 32 and char not in ['\t', '\b']:
+                if debug_mode:
+                    sys.stdout.write(f"[control:{ord(char)}]")
+                    sys.stdout.flush()
                 continue
                 
-        except (UnicodeDecodeError, ValueError) as e:
-            # Skip problematic characters
-            continue
+            # Check if character is a umlaut or special character
+            is_special = char in special_chars or ord(char) > 127
+                
+            # Add character to our input and display it
+            chars.append(char)
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            last_char = char
+            
+            # Check for auto-submit conditions:
+            
+            # 1. Punctuation marks should trigger auto-submit (but not for special chars)
+            if char in auto_submit_chars and not is_special:
+                auto_submit = True
+                break
+                
+            # 2. Double space should trigger auto-submit
+            if char == ' ' and len(chars) > 1 and chars[-2] == ' ':
+                auto_submit = True
+                break
+            
         except Exception as e:
-            # For any other errors during character processing
-            if chars:  # Only break if we have some input
+            # Handle any errors
+            if debug_mode:
+                sys.stdout.write(f"[error:{str(e)}]")
+                sys.stdout.flush()
+            
+            # Only break if we have some input, otherwise continue
+            if chars:
                 break
             continue
     
+    # Join all characters to form the final text
     text = ''.join(chars)
+    
+    if debug_mode:
+        sys.stdout.write(f"[input_complete:{text}]")
+        sys.stdout.flush()
+        
     return text, auto_submit, last_char
 
 def parse_arguments():
@@ -249,6 +256,7 @@ def parse_arguments():
     parser.add_argument("--temp", type=float, default=0.7, 
                         help="Temperatur für die Textgenerierung (0.1-2.0, Standard: 0.7)")
     parser.add_argument("--model", type=str, help="Spezifisches Ollama-Modell verwenden")
+    parser.add_argument("--debug", action="store_true", help="Debug-Modus für Tastatureingabe aktivieren")
     
     return parser.parse_args()
 
@@ -259,6 +267,9 @@ def main():
     
     # Setup logging if enabled
     api_logger = setup_logger(args.log)
+    
+    # Set debug mode
+    debug_mode = args.debug
     
     # Validate temperature
     temperature = args.temp
@@ -271,6 +282,8 @@ def main():
     print("Schreibe und beende mit Enter oder einem Satzzeichen. Die KI schreibt das nächste Wort.")
     print("Verwende Backspace, um Tippfehler zu korrigieren.")
     print(f"Temperatur: {temperature}")
+    if debug_mode:
+        print("DEBUG-MODUS AKTIV: Zeige Zeicheninformationen")
     print("Drücke Strg+C zum Beenden.\n")
     
     # Try to connect to Ollama
@@ -340,7 +353,7 @@ def main():
         
         while True:
             # Get user input character by character
-            input_text, auto_submit, last_char = get_user_input_realtime()
+            input_text, auto_submit, last_char = get_user_input_realtime(debug_mode)
             
             # Auch leere Eingabe (z.B. nur Enter) akzeptieren und fortfahren
             # (dadurch kann der Nutzer einfach Enter drücken, um das LLM zum Generieren zu bringen)
