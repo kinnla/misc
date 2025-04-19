@@ -147,25 +147,28 @@ class TextState:
         sys.stdout.flush()
     
     def append_with_space_check(self, text):
-        """Append text with proper spacing"""
-        # Check if we need a space before adding text
+        """Append text with proper spacing, but don't write to screen"""
+        # Check if we need a space before adding text in our internal state
         if self.text and not self.text.endswith(" ") and text and not text.startswith(tuple('.,!?:;')):
-            self.append_text(" ")
+            # Add to internal state only
+            self.text += " "
+            # Don't write to screen as the user has already seen their input
         
-        self.append_text(text)
+        # Add to internal state only, don't write to screen again
+        self.text += text
     
     def append_punctuation(self, punct):
-        """Append punctuation mark correctly"""
-        # For punctuation, remove trailing space if exists
+        """Append punctuation mark correctly, but don't write to screen"""
+        # For punctuation, remove trailing space if exists in internal state
         if self.text.endswith(" "):
-            self.text = self.text[:-1]
-            sys.stdout.write("\b")
-            sys.stdout.flush()
+            self.text = self.text[:-1] 
+            # No need to write backspace to screen, as user has already seen their input
         
-        self.append_text(punct)
+        # Add to internal state only
+        self.text += punct
         
-        # Add space after punctuation
-        self.append_text(" ")
+        # Add space after punctuation in internal state
+        self.text += " "
     
     def append_ai_word(self, word):
         """Append AI generated word with proper formatting"""
@@ -234,8 +237,10 @@ class TextState:
                     self.debug("Space with empty input, submitting without adding space")
                     break
                 
-                # Add character to input and display
+                # Add character to input and display it
                 user_input += char
+                # We only write to stdout here, not to the text state
+                # The actual text state update happens in process_user_input
                 sys.stdout.write(char)
                 sys.stdout.flush()
                 
