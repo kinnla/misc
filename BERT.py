@@ -8,17 +8,12 @@ This script creates an interactive writing experience where the user and AI
 take turns writing one word at a time to co-create text.
 """
 
-import os
-import sys
-import time
+import torch
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import logging
+import sys
 
-# Set environment variables before importing transformers
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-
-# Configure logging to suppress warnings
+# Configure logging
 logging.basicConfig(level=logging.ERROR)
 
 def main():
@@ -26,101 +21,78 @@ def main():
     print("Beginne in der nächsten Zeile einen Satz. Die KI wird mit dir im Duett schreiben.\n")
     
     try:
-        # Import here to better handle potential import errors
+        # Load model and tokenizer directly (once, at the start)
         print("Lade GPT-2 Modell...")
-        import torch
-        import transformers
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        model_name = "distilgpt2"  # Smaller model for memory efficiency
         
-        # Disable transformers warnings
-        transformers.logging.set_verbosity_error()
+        tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+        model = GPT2LMHeadModel.from_pretrained(model_name)
         
-        # Initialize with minimal settings
-        tokenizer = AutoTokenizer.from_pretrained("distilgpt2")  # Smaller model
-        model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+        print(f"Modell {model_name} geladen. Du kannst jetzt beginnen.\n")
         
-        print("Modell geladen. Du kannst jetzt beginnen.\n")
-        
+        # No parallelism, just a simple loop
         sentence = None
         
         while True:
-            try:
-                # Get user input
-                input_text = input("")
-                
-                # Handle empty input
-                if not input_text.strip():
-                    print("Bitte gib etwas ein.")
-                    continue
-                
-                # Initialize or append to sentence
-                if not sentence:
-                    sentence = input_text
-                elif input_text[-1].isalnum():
-                    sentence += " " + input_text
-                else:
-                    sentence += input_text
-                
-                try:
-                    # Use a very short context to reduce memory issues
-                    context = ' '.join(sentence.split()[-5:]) if len(sentence.split()) > 5 else sentence
-                    
-                    # Add a small delay to avoid memory issues
-                    time.sleep(0.2)
-                    
-                    # Use direct tokenizer -> model -> decode approach instead of pipeline
-                    inputs = tokenizer(context, return_tensors="pt", truncation=True, max_length=20)
-                    
-                    # Generate with minimal settings
-                    with torch.no_grad():
-                        output = model.generate(
-                            inputs["input_ids"],
-                            max_length=len(inputs["input_ids"][0]) + 2,  # Just enough for one more token
-                            do_sample=True,
-                            temperature=0.7,
-                            top_k=50,
-                            top_p=0.95,
-                            num_return_sequences=1,
-                            pad_token_id=tokenizer.eos_token_id
-                        )
-                    
-                    # Decode the output
-                    generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-                    
-                    # Get only the new part
-                    new_text = generated_text[len(context):].strip()
-                    
-                    if new_text:
-                        # Get just the first word
-                        next_word = new_text.split()[0] if new_text.split() else "..."
-                        sentence += " " + next_word
-                    else:
-                        # Fallback if no new text was generated
-                        sentence += " ..."
-                    
-                    # Print the updated sentence
-                    print(sentence)
-                    
-                except Exception as e:
-                    print(f"Fehler bei der Textgenerierung: {str(e)}")
-                    print("Das Skript wird beendet.")
-                    break
+            # Get user input
+            input_text = input("")
             
-            except KeyboardInterrupt:
-                print("\nProgramm beendet.")
-                break
-            except Exception as e:
-                print(f"Ein Fehler ist aufgetreten: {str(e)}")
-                break
+            # Handle empty input
+            if not input_text.strip():
+                print("Bitte gib etwas ein.")
+                continue
+            
+            # Initialize or append to sentence
+            if not sentence:
+                sentence = input_text
+            elif input_text[-1].isalnum():
+                sentence += " " + input_text
+            else:
+                sentence += input_text
+            
+            # Get context (use just the last few words to keep memory usage low)
+            context = ' '.join(sentence.split()[-10:]) if len(sentence.split()) > 10 else sentence
+            
+            # Simple generation
+            input_ids = tokenizer.encode(context, return_tensors='pt')
+            
+            # Generate without gradient computation for efficiency
+            with torch.no_grad():
+                output = model.generate(
+                    input_ids,
+                    max_length=input_ids.shape[1] + 1,  # Just one more token
+                    num_return_sequences=1,
+                    pad_token_id=tokenizer.eos_token_id,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_k=40,
+                    top_p=0.9
+                )
+            
+            # Decode and get just the new token
+            generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+            new_part = generated_text[len(context):].strip()
+            
+            # Extract just the first word
+            if new_part:
+                next_word = new_part.split()[0] if new_part.split() else "..."
+            else:
+                next_word = "..."
+            
+            # Update the sentence
+            sentence += " " + next_word
+            
+            # Display the updated sentence
+            print(sentence)
     
-    except ImportError as e:
-        print(f"Fehler: Eine benötigte Bibliothek konnte nicht geladen werden: {e}")
-        print("Bitte installiere die erforderlichen Pakete mit: pip install transformers torch")
-        sys.exit(1)
     except KeyboardInterrupt:
         print("\nProgramm beendet.")
+    except ImportError as e:
+        print(f"Fehler beim Laden der benötigten Bibliotheken: {e}")
+        print("Bitte installiere die fehlenden Pakete mit 'pip install transformers torch'")
+        sys.exit(1)
     except Exception as e:
-        print(f"Fataler Fehler: {str(e)}")
+        print(f"Ein Fehler ist aufgetreten: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
