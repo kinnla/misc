@@ -33,8 +33,14 @@ def setup_logger(log_enabled=False):
     logger = logging.getLogger("ollama_api")
     logger.setLevel(logging.INFO)
     
-    # Create file handler
-    log_filename = f"ollama_duett_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    # Create logs directory if it doesn't exist
+    logs_dir = "logs"
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+    
+    # Create file handler with timestamp in filename
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
+    log_filename = os.path.join(logs_dir, f"{timestamp}_ollama_duett.log")
     file_handler = logging.FileHandler(log_filename)
     
     # Create formatter
