@@ -169,16 +169,29 @@ class TextState:
     
     def append_punctuation(self, punct):
         """Append punctuation mark correctly, but don't write to screen"""
-        # For punctuation, remove trailing space if exists in internal state
-        if self.text.endswith(" "):
-            self.text = self.text[:-1] 
-            # No need to write backspace to screen, as user has already seen their input
+        # For punctuation, we need to make sure:
+        # 1. No space before the punctuation
+        # 2. Add space after the punctuation
+        # 3. The visual representation matches the internal state
         
-        # Add to internal state only
+        # Handle space before punctuation
+        if self.text.endswith(" "):
+            # Remove trailing space from internal state
+            self.text = self.text[:-1]
+            
+            # Remove space from screen as well - go back one character
+            sys.stdout.write("\b")
+            sys.stdout.flush()
+        
+        # Add punctuation to internal state only
         self.text += punct
         
         # Add space after punctuation in internal state
         self.text += " "
+        
+        # Add space to display as well since the user hasn't seen it yet
+        sys.stdout.write(" ")
+        sys.stdout.flush()
     
     def append_ai_word(self, word):
         """Append AI generated word with proper formatting"""
