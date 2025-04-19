@@ -18,41 +18,6 @@ import os
 import argparse
 import datetime
 
-# Safer character input handling - using a more robust implementation
-try:
-    # First try readchar which is very robust
-    from readchar import readchar as getch
-except ImportError:
-    # If not available, define our own implementation using the 'getch' module
-    try:
-        # Try to use getch module if available
-        import getch
-        
-        def getch():
-            """Wrapper for getch module that handles bytes correctly"""
-            try:
-                ch = getch.getch()
-                return ch
-            except Exception:
-                return None
-    except ImportError:
-        # Ultimate fallback using tty/termios (should work on Unix-like systems)
-        import tty
-        import termios
-        
-        def getch():
-            """Get a single character from stdin, Unix version"""
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
-            try:
-                tty.setraw(sys.stdin.fileno())
-                ch = sys.stdin.read(1)
-                return ch
-            except Exception:
-                return None
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
 # Configure logging - disable console output
 logging.basicConfig(level=logging.ERROR, handlers=[])
 
@@ -138,120 +103,97 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         print(f"\nFehler bei der Textgenerierung: {e}")
         return "..."
 
+def read_single_char():
+    """Read a single character from stdin without waiting for Enter key"""
+    import sys
+    import tty
+    import termios
+    
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
+
 def get_user_input_realtime(debug_mode=False):
-    """Get user input character by character, using basic punctuation rules for ending input"""
+    """Get user input character by character, ending on Enter or certain punctuation"""
     chars = []
-    auto_submit = False
     last_char = None
     
-    # Simplified set of punctuation that should trigger auto-submit
-    auto_submit_chars = ['.', ',', '!', '?', ':', ';']
+    # Collect input character by character
+    print_debug("Starting character input", debug_mode)
     
-    # Safe list of chars that should NEVER trigger auto-submit
-    # This includes all non-ASCII characters and known umlauts
-    special_chars = {
-        'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü',  # German umlauts
-        'á', 'é', 'í', 'ó', 'ú',        # Acute accents
-        'à', 'è', 'ì', 'ò', 'ù',        # Grave accents 
-        'â', 'ê', 'î', 'ô', 'û',        # Circumflex
-        'ë', 'ï', 'ÿ',                  # Diaeresis
-        'ç', 'Ç',                       # Cedilla
-        'ñ', 'Ñ'                        # Tilde
-    }
-    
-    if debug_mode:
-        sys.stdout.write("[Debug mode active]\n")
-        sys.stdout.flush()
-    
-    # Main input loop
     while True:
         try:
-            # Read a single character
-            c = getch()
+            char = read_single_char()
             
-            # Skip if nothing was read
-            if c is None:
-                continue
-                
-            # Handle bytestrings (common with getch implementations)
-            if isinstance(c, bytes):
-                try:
-                    c = c.decode('utf-8') 
-                except UnicodeDecodeError:
-                    # This might be a partial UTF-8 sequence or invalid bytes
-                    if debug_mode:
-                        sys.stdout.write(f"[Debug: Skipping invalid byte: {c!r}]\n")
-                        sys.stdout.flush()
-                    continue
-            
-            # DEBUG: Print character info if debug mode is on
+            # Print debug info about the character
             if debug_mode:
+                char_repr = repr(char)
                 try:
-                    sys.stdout.write(f"[Debug: Got char: {c!r}, ord: {ord(c) if c else 'None'}]\n")
+                    char_ord = ord(char)
+                    print_debug(f"Got char: {char_repr}, ord: {char_ord}", debug_mode)
                 except:
-                    sys.stdout.write(f"[Debug: Got unprintable char]\n")
-                sys.stdout.flush()
+                    print_debug(f"Got char: {char_repr} (no ord value)", debug_mode)
             
-            # Handle backspace (ASCII 8 or DEL 127)
-            if c in ['\b', '\x7f']:
+            # Handle special keys
+            
+            # Backspace (ASCII 8 or DEL 127)
+            if char in ['\b', '\x7f']:
                 if chars:  # Only delete if there are characters
-                    chars.pop()  # Remove the last character
-                    # Backspace+space+backspace to erase the character
+                    chars.pop()
+                    # Backspace+space+backspace to erase character from screen
                     sys.stdout.write('\b \b')
                     sys.stdout.flush()
                 continue
             
-            # Enter key always submits
-            if c in ['\r', '\n']:
-                if debug_mode:
-                    sys.stdout.write("[Debug: Enter pressed, submitting]\n")
-                    sys.stdout.flush()
-                auto_submit = True
+            # Enter always ends input and triggers submission
+            if char in ['\r', '\n']:
+                print_debug("Enter pressed, ending input", debug_mode)
                 break
-                
-            # Skip other control characters
-            if ord(c) < 32 and c not in ['\t']:
+            
+            # Filter out other control characters
+            if ord(char) < 32 and char not in ['\t']:
+                print_debug(f"Skipping control character: {ord(char)}", debug_mode)
                 continue
             
-            # Determine if this is a special character (multi-byte or umlaut)
-            is_special = c in special_chars or ord(c) > 127
-            
-            # Add the character to our buffer and echo to screen
-            chars.append(c)
-            sys.stdout.write(c)
+            # Add regular characters to our input buffer and display
+            chars.append(char)
+            sys.stdout.write(char)
             sys.stdout.flush()
-            last_char = c
+            last_char = char
             
-            # Auto-submission rules:
-            
-            # 1. Standard punctuation (but only ASCII ones, not special characters)
-            if c in auto_submit_chars and not is_special:
-                auto_submit = True
+            # Auto-submit on punctuation (but ignore umlauts and special characters)
+            if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
+                print_debug(f"Punctuation detected: {char}, ending input", debug_mode)
                 break
-                
-            # 2. Double space (user pressed space twice)
-            if c == ' ' and len(chars) > 1 and chars[-2] == ' ':
-                auto_submit = True
+            
+            # Auto-submit on double space
+            if char == ' ' and len(chars) > 1 and chars[-2] == ' ':
+                print_debug("Double space detected, ending input", debug_mode)
                 break
                 
         except Exception as e:
-            # Catch-all for any other errors
-            if debug_mode:
-                sys.stdout.write(f"[Debug: Error in input handling: {e}]\n")
-                sys.stdout.flush()
-            continue
+            print_debug(f"Error during character input: {e}", debug_mode)
+            # Only stop if we have some input already
+            if chars:
+                break
     
-    # Combine all characters into our final input text
+    # Join all characters into the final text
     text = ''.join(chars)
+    print_debug(f"Final input: '{text}'", debug_mode)
     
-    # Make sure auto_submit is set correctly
-    if debug_mode:
-        sys.stdout.write(f"[Debug: Returning text='{text}', auto_submit={auto_submit}]\n")
+    return text, last_char
+
+def print_debug(message, debug_enabled=False):
+    """Print debug message if debug mode is enabled"""
+    if debug_enabled:
+        print(f"\n[DEBUG] {message}")
+        sys.stdout.write("\nStarte das Duett (schreibe): ")
         sys.stdout.flush()
-        
-    # Always return True for auto_submit if we're here, since we only exit the loop when auto_submit is True
-    # This ensures we always proceed with generating the next word
-    return text, True, last_char
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -287,7 +229,7 @@ def main():
     print("Verwende Backspace, um Tippfehler zu korrigieren.")
     print(f"Temperatur: {temperature}")
     if debug_mode:
-        print("DEBUG-MODUS AKTIV: Zeige Zeicheninformationen")
+        print("DEBUG-MODUS AKTIV")
     print("Drücke Strg+C zum Beenden.\n")
     
     # Try to connect to Ollama
@@ -339,7 +281,7 @@ def main():
             print("Kein Ollama-Modell gefunden. Bitte installiere ein Modell mit 'ollama pull llama3'")
             sys.exit(1)
             
-        print(f"Modell: {model_name}")
+        print(f"Modell: {model_name}\n")
         
     except requests.exceptions.RequestException:
         print("Konnte keine Verbindung zu Ollama herstellen.")
@@ -352,119 +294,75 @@ def main():
     try:
         # Main interaction loop
         sentence = ""
-        sys.stdout.write("\nStarte das Duett (schreibe): ")
+        sys.stdout.write("Starte das Duett (schreibe): ")
         sys.stdout.flush()
         
         while True:
             # Get user input character by character
-            input_text, auto_submit, last_char = get_user_input_realtime(debug_mode)
+            input_text, last_char = get_user_input_realtime(debug_mode)
             
-            if debug_mode:
-                sys.stdout.write(f"[Debug: Got input: '{input_text}', auto_submit: {auto_submit}]\n")
-                sys.stdout.flush()
-                
-            # Auch leere Eingabe (z.B. nur Enter) akzeptieren und fortfahren
-            # (dadurch kann der Nutzer einfach Enter drücken, um das LLM zum Generieren zu bringen)
-            
-            # Behandlung der Eingabe je nach Kontext
-            input_is_punctuation = input_text in [".", ",", "!", "?", ":", ";"] or (
-                len(input_text) > 0 and input_text[0] in [".", ",", "!", "?", ":", ";"]
-            )
-            
-            # Fall 1: Erste Eingabe überhaupt
+            # Update the sentence with the new input
             if not sentence:
+                # First input
                 sentence = input_text
-            
-            # Fall 2: Eingabe ist ein Satzzeichen
-            elif input_is_punctuation:
-                # Satzzeichen direkt ohne Leerzeichen anhängen
+            elif input_text in ['.', ',', '!', '?', ':', ';']:
+                # Punctuation - append without space
                 sentence += input_text
-                
-                # Bei Satzendzeichen ein Leerzeichen nachträglich hinzufügen
-                if any(input_text.endswith(c) for c in [".", "!", "?"]):
+                # Add space after sentence-ending punctuation
+                if input_text in ['.', '!', '?']:
                     sentence += " "
-            
-            # Fall 3: Normale Eingabe mit Leerzeichen vorher
             elif sentence.endswith(" "):
-                # Wenn der Satz bereits mit Leerzeichen endet, ohne weiteres anhängen
+                # If sentence already ends with space, just append
                 sentence += input_text
-            
-            # Fall 4: Normale Eingabe ohne Leerzeichen vorher
             else:
-                # Leerzeichen hinzufügen und dann die Eingabe
+                # Otherwise add a space before new input
                 sentence += " " + input_text
-            
-            # Kein zusätzlicher Puffer mehr - wir lassen die Leerzeichen-Handhabung dem Input überlassen
             
             # Use the last 50 words as context to keep memory usage low
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
             # Show thinking indicator
-            sys.stdout.write("... ")
+            sys.stdout.write(" ... ")
             sys.stdout.flush()
             
             # Get the next word from the model
             next_word = get_next_word(model_name, context, temperature, api_logger)
             
             # Clear the thinking indicator with backspaces
-            sys.stdout.write("\b\b\b\b")
+            sys.stdout.write("\b\b\b\b\b")
             sys.stdout.flush()
             
-            # Behandlung von Satzzeichen im Modelloutput
-            is_punctuation = next_word in [".", ",", "!", "?", ":", ";"] or next_word.startswith((".", ",", "!", "?"))
-            
-            # Prüfe, ob wir die drei Punkte "..." erhalten haben (Fallback)
-            if next_word == "...":
-                # Versuche es noch einmal mit einem anderen Prompt
-                retry_word = get_next_word(
-                    model_name, 
-                    context + " [Bitte gib nur ein einzelnes Wort zurück]", 
-                    temperature, 
-                    api_logger
-                )
-                if retry_word and retry_word != "...":
-                    next_word = retry_word
-            
-            # Handhabung des Outputs basierend auf Worttyp
-            if is_punctuation:
-                # Wenn es ein Satzzeichen ist, füge es ohne Leerzeichen hinzu
-                sys.stdout.write(f"{next_word}")
+            # Handle punctuation in the output
+            if next_word in ['.', ',', '!', '?', ':', ';'] or next_word.startswith(('.', ',', '!', '?')):
+                # Punctuation - no space before
+                sys.stdout.write(next_word)
                 sys.stdout.flush()
+                sentence += next_word
                 
-                # Füge ein Leerzeichen nach dem Satzzeichen hinzu, wenn es ein Satzendzeichen ist
-                if next_word in [".", "!", "?"]:
+                # Add space after sentence-ending punctuation
+                if next_word in ['.', '!', '?']:
                     sys.stdout.write(" ")
                     sys.stdout.flush()
-                    # Add the word to the sentence with space after
-                    sentence += next_word + " "
-                else:
-                    # For commas and other punctuation, just add without trailing space
-                    sentence += next_word
+                    sentence += " "
             else:
-                # Check if the sentence already ends with a space
-                needs_space = not sentence.endswith(" ")
-                
-                # Normales Wort ausgeben
-                sys.stdout.write(next_word)
-                
-                # Leerzeichen nur hinzufügen, wenn nötig (vermeidet doppelte Leerzeichen)
-                if needs_space:
+                # Regular word - add space before if needed
+                if not sentence.endswith(" "):
                     sys.stdout.write(" ")
-                    # Add the word to the sentence with space
-                    sentence += " " + next_word
-                else:
-                    # Just add the word without extra space
-                    sentence += next_word
+                    sentence += " "
                 
+                sys.stdout.write(next_word)
                 sys.stdout.flush()
+                sentence += next_word
+            
+            # Continue the loop for next word
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
         print(sentence)
     except UnicodeError as e:
         print(f"\n\nEin Unicode-Fehler ist aufgetreten: {e}")
-        print("Das Skript wird neu gestartet...")
-        main()  # Restart the script
+        print("Details:", repr(e))
+        sys.exit(1)
     except Exception as e:
         print(f"\n\nEin Fehler ist aufgetreten: {e}")
         print("Details:", repr(e))
