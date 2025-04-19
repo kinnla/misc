@@ -114,14 +114,22 @@ def read_single_char():
     try:
         tty.setraw(fd)
         ch = sys.stdin.read(1)
+        
+        # Handle Ctrl+C (ASCII 3)
+        if ch == '\x03':
+            # Restore terminal settings before raising KeyboardInterrupt
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            raise KeyboardInterrupt()
+            
+        return ch
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
 
 def get_user_input_realtime(debug_mode=False):
     """Get user input character by character, ending on Enter or certain punctuation"""
     chars = []
     last_char = None
+    delete_preceding_space = False
     
     # Collect input character by character
     print_debug("Starting character input", debug_mode)
@@ -160,6 +168,17 @@ def get_user_input_realtime(debug_mode=False):
                 print_debug(f"Skipping control character: {ord(char)}", debug_mode)
                 continue
             
+            # Special handling for punctuation - remove preceding space if needed
+            if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
+                # If the first character is punctuation and we're at the beginning of a line
+                # that probably follows the LLM output (which ended with a space)
+                if not chars and not delete_preceding_space:
+                    # Remove the preceding space on the screen
+                    sys.stdout.write('\b')
+                    sys.stdout.flush()
+                    delete_preceding_space = True
+                    print_debug("Removed preceding space for punctuation", debug_mode)
+            
             # Add regular characters to our input buffer and display
             chars.append(char)
             sys.stdout.write(char)
@@ -171,9 +190,9 @@ def get_user_input_realtime(debug_mode=False):
                 print_debug(f"Punctuation detected: {char}, ending input", debug_mode)
                 break
             
-            # Auto-submit on double space
-            if char == ' ' and len(chars) > 1 and chars[-2] == ' ':
-                print_debug("Double space detected, ending input", debug_mode)
+            # Auto-submit on space (simplified - just one space is enough)
+            if char == ' ':
+                print_debug("Space detected, ending input", debug_mode)
                 break
                 
         except Exception as e:
@@ -184,9 +203,9 @@ def get_user_input_realtime(debug_mode=False):
     
     # Join all characters into the final text
     text = ''.join(chars)
-    print_debug(f"Final input: '{text}'", debug_mode)
+    print_debug(f"Final input: '{text}', delete_preceding_space: {delete_preceding_space}", debug_mode)
     
-    return text, last_char
+    return text, last_char, delete_preceding_space
 
 def print_debug(message, debug_enabled=False):
     """Print debug message if debug mode is enabled"""
@@ -299,15 +318,21 @@ def main():
         
         while True:
             # Get user input character by character
-            input_text, last_char = get_user_input_realtime(debug_mode)
+            input_text, last_char, delete_preceding_space = get_user_input_realtime(debug_mode)
             
             # Update the sentence with the new input
             if not sentence:
                 # First input
                 sentence = input_text
             elif input_text in ['.', ',', '!', '?', ':', ';']:
-                # Punctuation - append without space
-                sentence += input_text
+                # Handle punctuation characters
+                if delete_preceding_space and sentence.endswith(" "):
+                    # Remove the space that was just added by the LLM output
+                    sentence = sentence[:-1] + input_text
+                else:
+                    # Just append the punctuation without space
+                    sentence += input_text
+                    
                 # Add space after sentence-ending punctuation
                 if input_text in ['.', '!', '?']:
                     sentence += " "
@@ -353,6 +378,12 @@ def main():
                 sys.stdout.write(next_word)
                 sys.stdout.flush()
                 sentence += next_word
+                
+                # Always add space after a regular word (if it ends with letter or number)
+                if next_word and next_word[-1].isalnum():
+                    sys.stdout.write(" ")
+                    sys.stdout.flush()
+                    sentence += " "
             
             # Continue the loop for next word
     
