@@ -108,11 +108,21 @@ def read_single_char():
     import sys
     import tty
     import termios
+    import os
+    import select
     
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
+        
+        # Use select with a timeout to avoid blocking indefinitely
+        r, _, _ = select.select([sys.stdin], [], [], 0.1)
+        if not r:
+            # No input ready, return None
+            return None
+            
+        # Input is ready, read it
         ch = sys.stdin.read(1)
         
         # Handle Ctrl+C (ASCII 3)
@@ -194,16 +204,33 @@ class TextState:
             if not word.endswith(" "):
                 self.append_text(" ")
     
-    def get_user_input(self):
-        """Get user input character by character, with real-time feedback"""
+    def get_user_input(self, block_input=False):
+        """Get user input character by character, with real-time feedback
+        
+        Args:
+            block_input: If True, don't accept any input (used when LLM is responding)
+        """
         user_input = ""
+        composing_umlaut = False  # Flag to track umlaut composition
         
         self.debug("Starting character input")
         
         while True:
             try:
+                # Check if we should block input (when LLM is responding)
+                if block_input:
+                    # Just sleep a tiny bit and continue the loop
+                    import time
+                    time.sleep(0.01)
+                    continue
+                
+                # Non-blocking read
                 char = read_single_char()
                 
+                # No input available yet, continue loop
+                if char is None:
+                    continue
+                    
                 # Debug output
                 if self.debug_mode:
                     try:
@@ -211,14 +238,28 @@ class TextState:
                     except:
                         self.debug(f"Got unprintable char")
                 
-                # Handle backspace
+                # Special handling for backspace with umlaut composition
                 if char in ['\b', '\x7f']:
+                    # If we're in the middle of composing an umlaut, cancel the composition
+                    if composing_umlaut:
+                        composing_umlaut = False
+                        continue
+                        
                     if user_input:
-                        # Remove last character from input
-                        user_input = user_input[:-1]
-                        # And from display (backspace, space, backspace)
-                        sys.stdout.write('\b \b')
-                        sys.stdout.flush()
+                        # Special case for German umlauts
+                        # Check if we're deleting an umlaut
+                        last_char = user_input[-1]
+                        if last_char in 'äöüÄÖÜ':
+                            # Remove last character from input
+                            user_input = user_input[:-1]
+                            # And from display (backspace, space, backspace)
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                        else:
+                            # Regular backspace behavior
+                            user_input = user_input[:-1]
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
                     continue
                 
                 # Enter key ends input
@@ -229,6 +270,27 @@ class TextState:
                 # Filter control characters
                 if ord(char) < 32 and char not in ['\t']:
                     continue
+                
+                # Handle special character sequences
+                # Check for possible dead keys used for umlaut composition
+                if char in ['\xc2\xa8', '¨', '\xa8']:
+                    composing_umlaut = True
+                    self.debug("Umlaut composition detected")
+                    continue
+                
+                # If we were composing an umlaut and got a regular vowel, convert it
+                if composing_umlaut and char.lower() in 'aeiou':
+                    umlaut_map = {
+                        'a': 'ä', 'A': 'Ä',
+                        'e': 'ë', 'E': 'Ë',
+                        'i': 'ï', 'I': 'Ï',
+                        'o': 'ö', 'O': 'Ö',
+                        'u': 'ü', 'U': 'Ü'
+                    }
+                    # Replace with corresponding umlaut
+                    char = umlaut_map.get(char, char)
+                    composing_umlaut = False
+                    self.debug(f"Composed umlaut: {char}")
                 
                 # Handle special cases
                 
@@ -256,6 +318,7 @@ class TextState:
                     
             except Exception as e:
                 self.debug(f"Error in input: {str(e)}")
+                # Continue with input if we have something
                 if user_input:
                     break
         
@@ -295,6 +358,15 @@ def parse_arguments():
     parser.add_argument("--debug", action="store_true", help="Debug-Modus für Tastatureingabe aktivieren")
     
     return parser.parse_args()
+
+def is_input_ready():
+    """Check if there's any input ready from stdin without blocking"""
+    import select
+    
+    # Use select to check if there's input waiting on stdin
+    # This is non-blocking - it just checks if there's input available
+    r, _, _ = select.select([sys.stdin], [], [], 0)
+    return len(r) > 0
 
 def main():
     """Main interactive duet writing function"""
@@ -389,10 +461,13 @@ def main():
         sys.stdout.write("> ")
         sys.stdout.flush()
         
+        # Indicator for LLM busy state
+        llm_busy = False
+        
         # Main interaction loop
         while True:
-            # Get user input
-            user_input = state.get_user_input()
+            # Get user input - block it if LLM is busy responding
+            user_input = state.get_user_input(block_input=llm_busy)
             
             # Process user input
             state.process_user_input(user_input)
@@ -400,7 +475,10 @@ def main():
             # Use the text state as context
             context = state.text
             
-            # Show thinking indicator
+            # Set LLM busy status to block input during processing
+            llm_busy = True
+            
+            # Show thinking indicator 
             state.display_thinking()
             
             # Get the next word from the model
@@ -411,6 +489,9 @@ def main():
             
             # Add AI word to text
             state.append_ai_word(next_word)
+            
+            # LLM is no longer busy - unblock input
+            llm_busy = False
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
