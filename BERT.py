@@ -18,15 +18,25 @@ import os
 import argparse
 import datetime
 
-# Safer character input handling
+# Safer character input handling - using a more robust implementation
 try:
-    # Try to use a more robust implementation if available
+    # First try readchar which is very robust
     from readchar import readchar as getch
 except ImportError:
+    # If not available, define our own implementation using the 'getch' module
     try:
-        from getch import getch
+        # Try to use getch module if available
+        import getch
+        
+        def getch():
+            """Wrapper for getch module that handles bytes correctly"""
+            try:
+                ch = getch.getch()
+                return ch
+            except Exception:
+                return None
     except ImportError:
-        # Fallback implementation for character input
+        # Ultimate fallback using tty/termios (should work on Unix-like systems)
         import tty
         import termios
         
@@ -37,9 +47,11 @@ except ImportError:
             try:
                 tty.setraw(sys.stdin.fileno())
                 ch = sys.stdin.read(1)
+                return ch
+            except Exception:
+                return None
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            return ch
 
 # Configure logging - disable console output
 logging.basicConfig(level=logging.ERROR, handlers=[])
@@ -127,126 +139,107 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         return "..."
 
 def get_user_input_realtime(debug_mode=False):
-    """Get user input character by character, ending only at specific punctuation or Enter"""
+    """Get user input character by character, using basic punctuation rules for ending input"""
     chars = []
     auto_submit = False
     last_char = None
     
-    # Set of commonly used special characters including umlauts and accents
-    special_chars = {
+    # Simplified set of punctuation that should trigger auto-submit
+    auto_submit_chars = ['.', ',', '!', '?', ':', ';']
+    
+    # Safe list of chars that should NEVER trigger auto-submit
+    # This includes all non-ASCII characters and known umlauts
+    special_chars = [
         'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü',  # German umlauts
         'á', 'é', 'í', 'ó', 'ú',        # Acute accents
-        'à', 'è', 'ì', 'ò', 'ù',        # Grave accents
+        'à', 'è', 'ì', 'ò', 'ù',        # Grave accents 
         'â', 'ê', 'î', 'ô', 'û',        # Circumflex
         'ë', 'ï', 'ÿ',                  # Diaeresis
         'ç', 'Ç',                       # Cedilla
         'ñ', 'Ñ'                        # Tilde
-    }
-    
-    # Define which characters should trigger auto-submit
-    auto_submit_chars = ['.', ',', '!', '?', ':', ';']
-    
-    # Buffer to collect bytes for multi-byte characters (like umlauts)
-    # This will help handling option+u followed by a vowel on macOS
-    byte_buffer = bytearray()
+    ]
     
     if debug_mode:
-        sys.stdout.write("[Debug: Input started]\n")
+        sys.stdout.write("[Debug mode active]\n")
         sys.stdout.flush()
     
+    # Main input loop
     while True:
         try:
-            # Get a single character
+            # Read a single character
             c = getch()
             
-            # Skip empty input
-            if not c:
+            # Skip if nothing was read
+            if c is None:
                 continue
-            
-            # Add to buffer if it's a byte
-            if isinstance(c, bytes):
-                byte_buffer.extend(c)
                 
-                # Try to decode the buffer
+            # Handle bytestrings (common with getch implementations)
+            if isinstance(c, bytes):
                 try:
-                    # Try to decode the current buffer
-                    char = byte_buffer.decode('utf-8')
-                    
-                    # If we get here, it's a valid UTF-8 sequence
-                    byte_buffer = bytearray()  # Clear the buffer
-                    
-                    if debug_mode:
-                        sys.stdout.write(f"[char:{ord(char)}]")
-                        sys.stdout.flush()
+                    c = c.decode('utf-8') 
                 except UnicodeDecodeError:
-                    # Not a complete UTF-8 sequence yet, wait for more bytes
+                    # This might be a partial UTF-8 sequence or invalid bytes
+                    if debug_mode:
+                        sys.stdout.write(f"[Debug: Skipping invalid byte: {c!r}]\n")
+                        sys.stdout.flush()
                     continue
-            else:
-                # Already a string (should be rare with getch)
-                char = c
             
-            # Handle control characters and special keys
+            # DEBUG: Print character info if debug mode is on
+            if debug_mode:
+                try:
+                    sys.stdout.write(f"[Debug: Got char: {c!r}, ord: {ord(c) if c else 'None'}]\n")
+                except:
+                    sys.stdout.write(f"[Debug: Got unprintable char]\n")
+                sys.stdout.flush()
             
-            # Check for backspace (ASCII 8 or DEL 127)
-            if char in ['\b', '\x7f']:
+            # Handle backspace (ASCII 8 or DEL 127)
+            if c in ['\b', '\x7f']:
                 if chars:  # Only delete if there are characters
                     chars.pop()  # Remove the last character
-                    # Output backspace+space+backspace to erase the character on screen
+                    # Backspace+space+backspace to erase the character
                     sys.stdout.write('\b \b')
                     sys.stdout.flush()
                 continue
             
-            # Enter key always ends input
-            if char in ['\r', '\n']:
+            # Enter key always submits
+            if c in ['\r', '\n']:
                 auto_submit = True
                 break
-            
-            # Filter out other control characters
-            if ord(char) < 32 and char not in ['\t', '\b']:
-                if debug_mode:
-                    sys.stdout.write(f"[control:{ord(char)}]")
-                    sys.stdout.flush()
+                
+            # Skip other control characters
+            if ord(c) < 32 and c not in ['\t']:
                 continue
-                
-            # Check if character is a umlaut or special character
-            is_special = char in special_chars or ord(char) > 127
-                
-            # Add character to our input and display it
-            chars.append(char)
-            sys.stdout.write(char)
+            
+            # Determine if this is a special character (multi-byte or umlaut)
+            is_special = c in special_chars or ord(c) > 127
+            
+            # Add the character to our buffer and echo to screen
+            chars.append(c)
+            sys.stdout.write(c)
             sys.stdout.flush()
-            last_char = char
+            last_char = c
             
-            # Check for auto-submit conditions:
+            # Auto-submission rules:
             
-            # 1. Punctuation marks should trigger auto-submit (but not for special chars)
-            if char in auto_submit_chars and not is_special:
+            # 1. Standard punctuation (but only ASCII ones, not special characters)
+            if c in auto_submit_chars and not is_special:
                 auto_submit = True
                 break
                 
-            # 2. Double space should trigger auto-submit
-            if char == ' ' and len(chars) > 1 and chars[-2] == ' ':
+            # 2. Double space (user pressed space twice)
+            if c == ' ' and len(chars) > 1 and chars[-2] == ' ':
                 auto_submit = True
                 break
-            
+                
         except Exception as e:
-            # Handle any errors
+            # Catch-all for any other errors
             if debug_mode:
-                sys.stdout.write(f"[error:{str(e)}]")
+                sys.stdout.write(f"[Debug: Error in input handling: {e}]\n")
                 sys.stdout.flush()
-            
-            # Only break if we have some input, otherwise continue
-            if chars:
-                break
             continue
     
-    # Join all characters to form the final text
+    # Combine all characters into our final input text
     text = ''.join(chars)
-    
-    if debug_mode:
-        sys.stdout.write(f"[input_complete:{text}]")
-        sys.stdout.flush()
-        
     return text, auto_submit, last_char
 
 def parse_arguments():
