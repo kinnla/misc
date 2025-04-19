@@ -14,6 +14,19 @@ import logging
 import requests
 import json
 import re
+import os
+
+# Versuche readline zu importieren für bessere Eingabebehandlung
+try:
+    import readline
+except ImportError:
+    pass
+
+# Versuche getch zu importieren, falls verfügbar
+try:
+    from getch import getch
+except ImportError:
+    getch = None
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
@@ -63,12 +76,48 @@ def get_next_word(model_name, context):
         print(f"\nFehler bei der Textgenerierung: {e}")
         return "..."
 
+def get_user_input(prompt=""):
+    """Get user input without line break"""
+    # Verwende eine eigene einfache Eingabemethode
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    
+    chars = []
+    while True:
+        # Lese ein einzelnes Zeichen
+        if getch:
+            # Wenn getch verfügbar ist
+            char = getch()
+            if isinstance(char, bytes):
+                char = char.decode('utf-8')
+        else:
+            # Fallback ohne getch
+            char = sys.stdin.read(1)
+        
+        # Enter-Taste beendet die Eingabe
+        if char in ['\r', '\n']:
+            break
+        
+        # Zeichen zur Eingabe hinzufügen und anzeigen
+        chars.append(char)
+        sys.stdout.write(char)
+        sys.stdout.flush()
+    
+    return ''.join(chars)
+
 def main():
     """Main interactive duet writing function"""
     print("Interaktives Duett mit Ollama")
     print("-----------------------------")
     print("Schreibe ein Wort und drücke Enter. Die KI fügt das nächste Wort hinzu.")
     print("Drücke Strg+C zum Beenden.\n")
+    
+    # Prüfe, ob getch verfügbar ist
+    if not getch:
+        print("Hinweis: Die getch-Bibliothek ist nicht installiert.")
+        print("Für eine bessere Eingabeerfahrung kannst du sie installieren mit:")
+        print("pip install getch")
+        print()
     
     # Try to connect to Ollama
     try:
@@ -109,15 +158,17 @@ def main():
     try:
         # Main interaction loop
         sentence = ""
-        print("\nStarte das Duett (gib das erste Wort ein):", end=" ", flush=True)
+        sys.stdout.write("\nStarte das Duett (gib das erste Wort ein): ")
+        sys.stdout.flush()
         
         while True:
-            # Get user input
-            input_text = input("")
+            # Get user input - ohne Zeilenumbruch
+            input_text = get_user_input()
             
             # Handle empty input
             if not input_text.strip():
-                print("Bitte gib etwas ein: ", end="", flush=True)
+                sys.stdout.write("Bitte gib etwas ein: ")
+                sys.stdout.flush()
                 continue
             
             # Initialize or append to sentence
@@ -132,19 +183,28 @@ def main():
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
             # Show thinking indicator
-            print("...", end="", flush=True)
+            sys.stdout.write(" ... ")
+            sys.stdout.flush()
             
             # Get the next word from the model
             next_word = get_next_word(model_name, context)
             
             # Clear the thinking indicator with backspaces
-            print("\b\b\b", end="", flush=True)
+            sys.stdout.write("\b\b\b\b\b")
+            sys.stdout.flush()
+            
+            # Prüfe, ob das Wort einen Punkt enthält und korrigiere die Ausgabe
+            if "." in next_word:
+                # Wenn das Wort mit einem Punkt endet, gib es ohne Leerzeichen aus
+                sys.stdout.write(f" {next_word}")
+                sys.stdout.flush()
+            else:
+                # Normales Wort mit Leerzeichen
+                sys.stdout.write(f" {next_word} ")
+                sys.stdout.flush()
             
             # Add the word to the sentence
             sentence += " " + next_word
-            
-            # Display just the new word and position cursor for next input
-            print(next_word, end=" ", flush=True)
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
