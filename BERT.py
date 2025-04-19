@@ -56,16 +56,19 @@ def get_next_word(model_name, context):
         
     except requests.exceptions.RequestException as e:
         # Handle connection errors
-        print(f"Fehler bei der Verbindung zu Ollama: {e}")
+        print(f"\nFehler bei der Verbindung zu Ollama: {e}")
         print("Ist Ollama installiert und läuft der Server? Starte Ollama mit 'ollama serve'")
         return "..."
     except Exception as e:
-        print(f"Fehler bei der Textgenerierung: {e}")
+        print(f"\nFehler bei der Textgenerierung: {e}")
         return "..."
 
 def main():
     """Main interactive duet writing function"""
-    print("Beginne in der nächsten Zeile einen Satz. Die KI wird mit dir im Duett schreiben.\n")
+    print("Interaktives Duett mit Ollama")
+    print("-----------------------------")
+    print("Schreibe ein Wort und drücke Enter. Die KI fügt das nächste Wort hinzu.")
+    print("Drücke Strg+C zum Beenden.\n")
     
     # Try to connect to Ollama
     try:
@@ -93,8 +96,7 @@ def main():
             print("Kein Ollama-Modell gefunden. Bitte installiere ein Modell mit 'ollama pull llama3'")
             sys.exit(1)
             
-        print(f"Verwende Ollama-Modell: {model_name}")
-        print("Du kannst jetzt beginnen.\n")
+        print(f"Modell: {model_name}")
         
     except requests.exceptions.RequestException:
         print("Konnte keine Verbindung zu Ollama herstellen.")
@@ -106,7 +108,8 @@ def main():
     
     try:
         # Main interaction loop
-        sentence = None
+        sentence = ""
+        print("\nStarte das Duett (gib das erste Wort ein):", end=" ", flush=True)
         
         while True:
             # Get user input
@@ -114,7 +117,7 @@ def main():
             
             # Handle empty input
             if not input_text.strip():
-                print("Bitte gib etwas ein.")
+                print("Bitte gib etwas ein: ", end="", flush=True)
                 continue
             
             # Initialize or append to sentence
@@ -128,19 +131,26 @@ def main():
             # Use the last 50 words as context to keep memory usage low
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
+            # Show thinking indicator
+            print("...", end="", flush=True)
+            
             # Get the next word from the model
             next_word = get_next_word(model_name, context)
+            
+            # Clear the thinking indicator with backspaces
+            print("\b\b\b", end="", flush=True)
             
             # Add the word to the sentence
             sentence += " " + next_word
             
-            # Display the updated sentence
-            print(sentence)
+            # Display just the new word and position cursor for next input
+            print(next_word, end=" ", flush=True)
     
     except KeyboardInterrupt:
-        print("\nProgramm beendet.")
+        print("\n\nDuett beendet. Finaler Text:")
+        print(sentence)
     except Exception as e:
-        print(f"Ein Fehler ist aufgetreten: {e}")
+        print(f"\n\nEin Fehler ist aufgetreten: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
