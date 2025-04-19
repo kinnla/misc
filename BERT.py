@@ -125,101 +125,159 @@ def read_single_char():
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
-def get_user_input_realtime(debug_mode=False):
-    """Get user input character by character, ending on Enter or certain punctuation"""
-    chars = []
-    last_char = None
-    delete_preceding_space = False
+class TextState:
+    """Class to maintain text state and handle display synchronization"""
     
-    # Collect input character by character
-    print_debug("Starting character input", debug_mode)
+    def __init__(self, debug_mode=False):
+        self.text = ""
+        self.debug_mode = debug_mode
     
-    while True:
-        try:
-            char = read_single_char()
-            
-            # Print debug info about the character
-            if debug_mode:
-                char_repr = repr(char)
-                try:
-                    char_ord = ord(char)
-                    print_debug(f"Got char: {char_repr}, ord: {char_ord}", debug_mode)
-                except:
-                    print_debug(f"Got char: {char_repr} (no ord value)", debug_mode)
-            
-            # Handle special keys
-            
-            # Backspace (ASCII 8 or DEL 127)
-            if char in ['\b', '\x7f']:
-                if chars:  # Only delete if there are characters
-                    chars.pop()
-                    # Backspace+space+backspace to erase character from screen
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-                continue
-            
-            # Enter always ends input and triggers submission
-            if char in ['\r', '\n']:
-                print_debug("Enter pressed, ending input", debug_mode)
-                break
-            
-            # Filter out other control characters
-            if ord(char) < 32 and char not in ['\t']:
-                print_debug(f"Skipping control character: {ord(char)}", debug_mode)
-                continue
-            
-            # Special handling for punctuation - remove preceding space if needed
-            if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
-                # If the first character is punctuation and we're at the beginning of a line
-                # that probably follows the LLM output (which ended with a space)
-                if not chars and not delete_preceding_space:
-                    # Remove the preceding space on the screen
-                    sys.stdout.write('\b')
-                    sys.stdout.flush()
-                    delete_preceding_space = True
-                    print_debug("Removed preceding space for punctuation", debug_mode)
-            
-            # Add regular characters to our input buffer and display
-            chars.append(char)
-            sys.stdout.write(char)
+    def debug(self, message):
+        """Print debug message if debug mode is enabled"""
+        if self.debug_mode:
+            print(f"\n[DEBUG] {message}")
+            # Restore prompt
+            sys.stdout.write(f"\n> {self.text}")
             sys.stdout.flush()
-            last_char = char
-            
-            # Auto-submit on punctuation (but ignore umlauts and special characters)
-            if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
-                print_debug(f"Punctuation detected: {char}, ending input", debug_mode)
-                break
-            
-            # Auto-submit on space (simplified - just one space is enough)
-            if char == ' ':
-                # If this is the first character and it's a space,
-                # we're probably just triggering the LLM without adding content
-                if len(chars) == 1 and chars[0] == ' ':
-                    # Remove the space we just added both from array and screen
-                    chars.pop()  # Remove the space
-                    sys.stdout.write('\b')  # Move back one character
-                    sys.stdout.flush()
-                
-                print_debug("Space detected, ending input", debug_mode)
-                break
-                
-        except Exception as e:
-            print_debug(f"Error during character input: {e}", debug_mode)
-            # Only stop if we have some input already
-            if chars:
-                break
     
-    # Join all characters into the final text
-    text = ''.join(chars)
-    print_debug(f"Final input: '{text}', delete_preceding_space: {delete_preceding_space}", debug_mode)
+    def append_text(self, text):
+        """Append text and update display"""
+        self.text += text
+        sys.stdout.write(text)
+        sys.stdout.flush()
     
-    return text, last_char, delete_preceding_space
-
-def print_debug(message, debug_enabled=False):
-    """Print debug message if debug mode is enabled"""
-    if debug_enabled:
-        print(f"\n[DEBUG] {message}")
-        sys.stdout.write("\nStarte das Duett (schreibe): ")
+    def append_with_space_check(self, text):
+        """Append text with proper spacing"""
+        # Check if we need a space before adding text
+        if self.text and not self.text.endswith(" ") and text and not text.startswith(tuple('.,!?:;')):
+            self.append_text(" ")
+        
+        self.append_text(text)
+    
+    def append_punctuation(self, punct):
+        """Append punctuation mark correctly"""
+        # For punctuation, remove trailing space if exists
+        if self.text.endswith(" "):
+            self.text = self.text[:-1]
+            sys.stdout.write("\b")
+            sys.stdout.flush()
+        
+        self.append_text(punct)
+        
+        # Add space after punctuation
+        self.append_text(" ")
+    
+    def append_ai_word(self, word):
+        """Append AI generated word with proper formatting"""
+        # Check if the word is a punctuation mark
+        if word in ['.', ',', '!', '?', ':', ';'] or word.startswith(tuple('.,!?')):
+            # For punctuation, remove trailing space if exists
+            if self.text.endswith(" "):
+                self.text = self.text[:-1]
+                sys.stdout.write("\b")
+                sys.stdout.flush()
+                
+            self.append_text(word)
+            # Always add space after punctuation
+            self.append_text(" ")
+        else:
+            # For regular words
+            if not self.text.endswith(" "):
+                self.append_text(" ")
+                
+            self.append_text(word)
+            
+            # Always add space after word to prepare for next input
+            if not word.endswith(" "):
+                self.append_text(" ")
+    
+    def get_user_input(self):
+        """Get user input character by character, with real-time feedback"""
+        user_input = ""
+        
+        self.debug("Starting character input")
+        
+        while True:
+            try:
+                char = read_single_char()
+                
+                # Debug output
+                if self.debug_mode:
+                    try:
+                        self.debug(f"Got char: {repr(char)}, ord: {ord(char)}")
+                    except:
+                        self.debug(f"Got unprintable char")
+                
+                # Handle backspace
+                if char in ['\b', '\x7f']:
+                    if user_input:
+                        # Remove last character from input
+                        user_input = user_input[:-1]
+                        # And from display (backspace, space, backspace)
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
+                    continue
+                
+                # Enter key ends input
+                if char in ['\r', '\n']:
+                    self.debug("Enter pressed, submitting")
+                    break
+                
+                # Filter control characters
+                if ord(char) < 32 and char not in ['\t']:
+                    continue
+                
+                # Handle special cases
+                
+                # Single space when input is empty - just submit without adding space
+                if char == ' ' and not user_input:
+                    self.debug("Space with empty input, submitting without adding space")
+                    break
+                
+                # Add character to input and display
+                user_input += char
+                sys.stdout.write(char)
+                sys.stdout.flush()
+                
+                # Auto-submit on punctuation
+                if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
+                    self.debug(f"Punctuation detected: {char}, submitting")
+                    break
+                
+                # Auto-submit on space
+                if char == ' ':
+                    self.debug("Space detected, submitting")
+                    break
+                    
+            except Exception as e:
+                self.debug(f"Error in input: {str(e)}")
+                if user_input:
+                    break
+        
+        self.debug(f"Final input: '{user_input}'")
+        return user_input
+    
+    def process_user_input(self, input_text):
+        """Process and add user input to state"""
+        if not input_text:
+            # Empty input, just continue
+            return
+            
+        # Special case for punctuation
+        if input_text in ['.', ',', '!', '?', ':', ';']:
+            self.append_punctuation(input_text)
+        else:
+            # Normal text input
+            self.append_with_space_check(input_text)
+    
+    def display_thinking(self):
+        """Show thinking indicator"""
+        sys.stdout.write("... ")
+        sys.stdout.flush()
+    
+    def clear_thinking(self):
+        """Clear thinking indicator"""
+        sys.stdout.write("\b\b\b\b")
         sys.stdout.flush()
 
 def parse_arguments():
@@ -319,101 +377,39 @@ def main():
         sys.exit(1)
     
     try:
-        # Main interaction loop
-        sentence = ""
-        sys.stdout.write("Starte das Duett (schreibe): ")
+        # Initialize text state
+        state = TextState(debug_mode)
+        
+        # Start prompt
+        sys.stdout.write("> ")
         sys.stdout.flush()
         
+        # Main interaction loop
         while True:
-            # Get user input character by character
-            input_text, last_char, delete_preceding_space = get_user_input_realtime(debug_mode)
+            # Get user input
+            user_input = state.get_user_input()
             
-            # Update the sentence with the new input
-            if not sentence:
-                # First input
-                sentence = input_text
-            elif input_text in ['.', ',', '!', '?', ':', ';']:
-                # Handle punctuation characters
-                if delete_preceding_space and sentence.endswith(" "):
-                    # Remove the space that was just added by the LLM output
-                    sentence = sentence[:-1] + input_text
-                else:
-                    # Just append the punctuation without space
-                    sentence += input_text
-                    
-                # Add space after ALL punctuation marks
-                sentence += " "
-            elif sentence.endswith(" "):
-                # If sentence already ends with space, just append
-                sentence += input_text
-            else:
-                # Otherwise add a space before new input
-                sentence += " " + input_text
+            # Process user input
+            state.process_user_input(user_input)
             
-            # Use the last 50 words as context to keep memory usage low
-            context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
+            # Use the text state as context
+            context = state.text
             
-            # Check if the last character is a punctuation mark (and we need to add a space)
-            # This ensures proper spacing when user ends with punctuation
-            if sentence and sentence[-1] in ['.', ',', '!', '?', ':', ';'] and not sentence.endswith(" "):
-                # Add space if we end with punctuation and no space
-                sys.stdout.write(" ")
-                sys.stdout.flush()
-                sentence += " "
-                print_debug(f"Added space after punctuation: {sentence}", debug_mode)
-            
-            # Show thinking indicator - add space only if needed
-            if sentence and not sentence.endswith(" "):
-                sys.stdout.write(" ... ")
-            else:
-                sys.stdout.write("... ")
-            sys.stdout.flush()
+            # Show thinking indicator
+            state.display_thinking()
             
             # Get the next word from the model
             next_word = get_next_word(model_name, context, temperature, api_logger)
             
-            # Clear the thinking indicator with backspaces (accounting for possible space)
-            if sentence and not sentence.endswith(" "):
-                sys.stdout.write("\b\b\b\b\b\b")  # 6 chars: " ... "
-            else:
-                sys.stdout.write("\b\b\b\b")  # 4 chars: "... "
-            sys.stdout.flush()
+            # Clear the thinking indicator
+            state.clear_thinking()
             
-            # Handle punctuation in the output
-            if next_word in ['.', ',', '!', '?', ':', ';'] or next_word.startswith(('.', ',', '!', '?')):
-                # Punctuation - no space before
-                sys.stdout.write(next_word)
-                sys.stdout.flush()
-                sentence += next_word
-                
-                # Add space after ANY punctuation (not just sentence-ending ones)
-                # This makes it easier for the user to continue typing
-                # Double-check that we always add the space after punctuation
-                sys.stdout.write(" ")
-                sys.stdout.flush()
-                if not sentence.endswith(" "):  # Ensure we don't add double spaces
-                    sentence += " "
-            else:
-                # Regular word - add space before if needed
-                if not sentence.endswith(" "):
-                    sys.stdout.write(" ")
-                    sentence += " "
-                
-                sys.stdout.write(next_word)
-                sys.stdout.flush()
-                sentence += next_word
-                
-                # Always add space after a regular word (if it ends with letter or number)
-                if next_word and next_word[-1].isalnum():
-                    sys.stdout.write(" ")
-                    sys.stdout.flush()
-                    sentence += " "
-            
-            # Continue the loop for next word
+            # Add AI word to text
+            state.append_ai_word(next_word)
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
-        print(sentence)
+        print(state.text)
     except UnicodeError as e:
         print(f"\n\nEin Unicode-Fehler ist aufgetreten: {e}")
         print("Details:", repr(e))
