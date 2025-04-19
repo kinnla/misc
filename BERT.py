@@ -149,7 +149,7 @@ def get_user_input_realtime(debug_mode=False):
     
     # Safe list of chars that should NEVER trigger auto-submit
     # This includes all non-ASCII characters and known umlauts
-    special_chars = [
+    special_chars = {
         'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü',  # German umlauts
         'á', 'é', 'í', 'ó', 'ú',        # Acute accents
         'à', 'è', 'ì', 'ò', 'ù',        # Grave accents 
@@ -157,7 +157,7 @@ def get_user_input_realtime(debug_mode=False):
         'ë', 'ï', 'ÿ',                  # Diaeresis
         'ç', 'Ç',                       # Cedilla
         'ñ', 'Ñ'                        # Tilde
-    ]
+    }
     
     if debug_mode:
         sys.stdout.write("[Debug mode active]\n")
@@ -203,6 +203,9 @@ def get_user_input_realtime(debug_mode=False):
             
             # Enter key always submits
             if c in ['\r', '\n']:
+                if debug_mode:
+                    sys.stdout.write("[Debug: Enter pressed, submitting]\n")
+                    sys.stdout.flush()
                 auto_submit = True
                 break
                 
@@ -240,7 +243,15 @@ def get_user_input_realtime(debug_mode=False):
     
     # Combine all characters into our final input text
     text = ''.join(chars)
-    return text, auto_submit, last_char
+    
+    # Make sure auto_submit is set correctly
+    if debug_mode:
+        sys.stdout.write(f"[Debug: Returning text='{text}', auto_submit={auto_submit}]\n")
+        sys.stdout.flush()
+        
+    # Always return True for auto_submit if we're here, since we only exit the loop when auto_submit is True
+    # This ensures we always proceed with generating the next word
+    return text, True, last_char
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -348,6 +359,10 @@ def main():
             # Get user input character by character
             input_text, auto_submit, last_char = get_user_input_realtime(debug_mode)
             
+            if debug_mode:
+                sys.stdout.write(f"[Debug: Got input: '{input_text}', auto_submit: {auto_submit}]\n")
+                sys.stdout.flush()
+                
             # Auch leere Eingabe (z.B. nur Enter) akzeptieren und fortfahren
             # (dadurch kann der Nutzer einfach Enter drücken, um das LLM zum Generieren zu bringen)
             
