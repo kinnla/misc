@@ -17,7 +17,29 @@ import re
 import os
 import argparse
 import datetime
-from getch import getch
+
+# Safer character input handling
+try:
+    # Try to use a more robust implementation if available
+    from readchar import readchar as getch
+except ImportError:
+    try:
+        from getch import getch
+    except ImportError:
+        # Fallback implementation for character input
+        import tty
+        import termios
+        
+        def getch():
+            """Get a single character from stdin, Unix version"""
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ch
 
 # Configure logging - disable console output
 logging.basicConfig(level=logging.ERROR, handlers=[])
@@ -109,37 +131,80 @@ def get_user_input_realtime():
     chars = []
     auto_submit = False
     last_char = None
+    composing_char = False  # Flag for macOS dead key composition (like Option+u)
     
     while True:
-        # Lese ein einzelnes Zeichen
-        char = getch()
-        if isinstance(char, bytes):
-            char = char.decode('utf-8', errors='replace')
-        
-        # ASCII-Werte für Backspace sind 8 oder 127 (DEL)
-        if char in ['\b', '\x7f']:
-            if chars:  # Nur löschen, wenn Zeichen vorhanden sind
-                chars.pop()  # letztes Zeichen aus der Liste entfernen
-                # Backspace, Space, Backspace ausgeben, um das Zeichen zu löschen
-                sys.stdout.write('\b \b')
+        try:
+            # Get a single character
+            char = getch()
+            
+            # Skip empty input
+            if not char:
+                continue
+                
+            # Handle byte input and convert to string safely
+            if isinstance(char, bytes):
+                try:
+                    char = char.decode('utf-8', errors='replace')
+                except UnicodeDecodeError:
+                    # Skip invalid characters
+                    continue
+            
+            # Handle dead keys (option+u on macOS)
+            # When Option+u is pressed, some systems report special characters
+            if char in ['\x00', '\x1b', '\xc2\xa8', '¨']:
+                composing_char = True
+                continue
+            
+            # If we just saw a dead key, this char might be the base vowel
+            # macOS will automatically compose the umlaut, so no special handling needed
+            if composing_char:
+                composing_char = False
+                # continue normal processing
+            
+            # ASCII values for Backspace (8) or DEL (127)
+            if char in ['\b', '\x7f']:
+                if chars:  # Only delete if there are characters
+                    chars.pop()  # Remove the last character from the list
+                    # Output Backspace+Space+Backspace to erase the character
+                    sys.stdout.write('\b \b')
+                    sys.stdout.flush()
+                continue
+            
+            # Enter key ends input
+            if char in ['\r', '\n']:
+                auto_submit = True
+                break
+            
+            # Try to handle the character more safely
+            try:
+                # Filter out control characters
+                if ord(char) < 32 and char not in ['\r', '\n', '\t', '\b']:
+                    continue
+                    
+                # Add character to input and display it
+                chars.append(char)
+                sys.stdout.write(char)
                 sys.stdout.flush()
+                last_char = char
+                
+                # If the last character is not alphanumeric, auto-submit
+                if not char.isalnum():
+                    auto_submit = True
+                    break
+            except ValueError:
+                # Skip characters that cause problems
+                continue
+                
+        except (UnicodeDecodeError, ValueError) as e:
+            # Skip problematic characters
             continue
-        
-        # Enter-Taste beendet die Eingabe
-        if char in ['\r', '\n']:
-            auto_submit = True
-            break
-        
-        # Zeichen zur Eingabe hinzufügen und anzeigen
-        chars.append(char)
-        sys.stdout.write(char)
-        sys.stdout.flush()
-        last_char = char
-        
-        # Wenn letztes Zeichen nicht alphanumerisch ist, automatisch Submit
-        if chars and not char.isalnum():
-            auto_submit = True
-            break
+        except Exception as e:
+            # For any other errors during character processing
+            # Only break if we have some input, otherwise continue
+            if chars:
+                break
+            continue
     
     text = ''.join(chars)
     return text, auto_submit, last_char
@@ -295,8 +360,13 @@ def main():
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
         print(sentence)
+    except UnicodeError as e:
+        print(f"\n\nEin Unicode-Fehler ist aufgetreten: {e}")
+        print("Das Skript wird neu gestartet...")
+        main()  # Restart the script
     except Exception as e:
         print(f"\n\nEin Fehler ist aufgetreten: {e}")
+        print("Details:", repr(e))
         sys.exit(1)
 
 if __name__ == "__main__":
