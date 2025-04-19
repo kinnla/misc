@@ -132,6 +132,7 @@ def get_user_input_realtime():
     auto_submit = False
     last_char = None
     composing_char = False  # Flag for macOS dead key composition (like Option+u)
+    deadkey_buffer = ""  # Buffer to handle deadkeys on macOS
     
     while True:
         try:
@@ -154,14 +155,30 @@ def get_user_input_realtime():
             # When Option+u is pressed, some systems report special characters
             if char in ['\x00', '\x1b', '\xc2\xa8', '¨', '˙', '´', '`', '^']:
                 composing_char = True
-                # Important: don't trigger auto-submit for accent/umlaut keys
+                deadkey_buffer = char  # Store the deadkey
+                # Don't add it to the input or display it
                 continue
             
             # If we just saw a dead key, this char might be the base vowel
-            # macOS will automatically compose the umlaut, so no special handling needed
             if composing_char:
                 composing_char = False
-                # continue normal processing
+                
+                # On macOS, pressing Option+u and then 'o' directly produces 'ö'
+                # Let's try to detect common umlaut combinations
+                if deadkey_buffer in ['¨', '\xc2\xa8'] and char.lower() in 'aeiou':
+                    # Map to the corresponding umlaut
+                    umlaut_map = {
+                        'a': 'ä', 'A': 'Ä',
+                        'e': 'ë', 'E': 'Ë',
+                        'i': 'ï', 'I': 'Ï',
+                        'o': 'ö', 'O': 'Ö',
+                        'u': 'ü', 'U': 'Ü'
+                    }
+                    # Replace with the actual umlaut
+                    char = umlaut_map.get(char, char)
+                
+                deadkey_buffer = ""  # Clear the buffer
+                # Continue with normal processing for the resulting character
             
             # ASCII values for Backspace (8) or DEL (127)
             if char in ['\b', '\x7f']:
@@ -174,10 +191,9 @@ def get_user_input_realtime():
             
             # Enter key ends input
             if char in ['\r', '\n']:
-                # Make sure we don't interrupt an umlaut composition
-                if not composing_char:
-                    auto_submit = True
-                    break
+                # Always end input on Enter
+                auto_submit = True
+                break
             
             # Try to handle the character more safely
             try:
@@ -192,29 +208,24 @@ def get_user_input_realtime():
                 last_char = char
                 
                 # Check if the character should trigger auto-submit
-                # Special case for punctuation marks that should trigger auto-submit (excluding space)
+                # Punctuation marks that should trigger auto-submit
                 auto_submit_chars = ['.', ',', '!', '?', ':', ';', '-', ')', ']', '}', '/']
                 
-                # If it's a punctuation mark (but not an umlaut or accent), auto-submit
+                # If it's a punctuation mark, auto-submit
                 if char in auto_submit_chars:
                     auto_submit = True
                     break
                     
                 # Special handling for space: only auto-submit if the last character in the text was also a space
-                # This prevents auto-submitting when the user wants to add a space after the AI's contribution
                 if char == ' ':
-                    # Check if the sentence ends with a space already
-                    if sentence and sentence.endswith(' '):
+                    # Check if the input already has a space (double space)
+                    if len(chars) > 1 and chars[-2] == ' ':
                         auto_submit = True
                         break
-                    else:
-                        # Don't auto-submit for the first space after text
-                        continue
                 
-                # For other non-alphanumeric chars, check if they're likely to be accents/umlauts
-                if not char.isalnum() and not char.isspace() and not any(c in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç' for c in char):
-                    auto_submit = True
-                    break
+                # Don't auto-submit for umlauts or other special characters
+                # We'll only auto-submit for specific punctuation marks and double spaces
+                
             except ValueError:
                 # Skip characters that cause problems
                 continue
@@ -224,8 +235,7 @@ def get_user_input_realtime():
             continue
         except Exception as e:
             # For any other errors during character processing
-            # Only break if we have some input, otherwise continue
-            if chars:
+            if chars:  # Only break if we have some input
                 break
             continue
     
@@ -332,11 +342,8 @@ def main():
             # Get user input character by character
             input_text, auto_submit, last_char = get_user_input_realtime()
             
-            # Handle empty input
-            if not input_text.strip():
-                sys.stdout.write("Bitte gib etwas ein: ")
-                sys.stdout.flush()
-                continue
+            # Auch leere Eingabe (z.B. nur Enter) akzeptieren und fortfahren
+            # (dadurch kann der Nutzer einfach Enter drücken, um das LLM zum Generieren zu bringen)
             
             # Behandlung der Eingabe je nach Kontext
             input_is_punctuation = input_text in [".", ",", "!", "?", ":", ";"] or (
@@ -366,10 +373,7 @@ def main():
                 # Leerzeichen hinzufügen und dann die Eingabe
                 sentence += " " + input_text
             
-            # Kleiner Puffer, wenn nicht automatisch abgesendet wurde
-            if not auto_submit:
-                sys.stdout.write(" ")
-                sys.stdout.flush()
+            # Kein zusätzlicher Puffer mehr - wir lassen die Leerzeichen-Handhabung dem Input überlassen
             
             # Use the last 50 words as context to keep memory usage low
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
@@ -416,12 +420,22 @@ def main():
                     # For commas and other punctuation, just add without trailing space
                     sentence += next_word
             else:
-                # Normales Wort mit Leerzeichen
-                sys.stdout.write(f"{next_word} ")
-                sys.stdout.flush()
+                # Check if the sentence already ends with a space
+                needs_space = not sentence.endswith(" ")
                 
-                # Add the word to the sentence with space
-                sentence += " " + next_word
+                # Normales Wort ausgeben
+                sys.stdout.write(next_word)
+                
+                # Leerzeichen nur hinzufügen, wenn nötig (vermeidet doppelte Leerzeichen)
+                if needs_space:
+                    sys.stdout.write(" ")
+                    # Add the word to the sentence with space
+                    sentence += " " + next_word
+                else:
+                    # Just add the word without extra space
+                    sentence += next_word
+                
+                sys.stdout.flush()
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
