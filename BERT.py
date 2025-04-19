@@ -15,6 +15,8 @@ import requests
 import json
 import re
 import os
+import argparse
+import datetime
 from getch import getch
 
 # Configure logging
@@ -22,7 +24,30 @@ logging.basicConfig(level=logging.ERROR)
 
 OLLAMA_API = "http://localhost:11434/api/generate"
 
-def get_next_word(model_name, context):
+def setup_logger(log_enabled=False):
+    """Setup logger for API interactions"""
+    if not log_enabled:
+        return None
+        
+    # Create logger
+    logger = logging.getLogger("ollama_api")
+    logger.setLevel(logging.INFO)
+    
+    # Create file handler
+    log_filename = f"ollama_duett_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    file_handler = logging.FileHandler(log_filename)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Add handler to logger
+    logger.addHandler(file_handler)
+    
+    print(f"API-Logs werden in {log_filename} gespeichert")
+    return logger
+
+def get_next_word(model_name, context, temperature=0.7, api_logger=None):
     """Get the next word from Ollama based on the given context"""
     try:
         # Prepare the request for Ollama
@@ -32,12 +57,16 @@ def get_next_word(model_name, context):
             "system": "Du bist ein Schriftsteller, der einen Text zusammen mit einem anderen Autor schreibt, abwechselnd Wort für Wort. Gib immer nur ein einzelnes passendes Wort zurück, das den Satz sinnvoll weiterführt.",
             "stream": False,
             "options": {
-                "temperature": 0.7,
+                "temperature": temperature,
                 "top_p": 0.9,
                 "top_k": 40,
                 "num_predict": 10  # Limit token generation
             }
         }
+        
+        # Log API request if enabled
+        if api_logger:
+            api_logger.info(f"REQUEST: {json.dumps(data, ensure_ascii=False)}")
         
         # Make the API request
         response = requests.post(OLLAMA_API, json=data)
@@ -46,6 +75,10 @@ def get_next_word(model_name, context):
         # Parse the response
         result = response.json()
         generated_text = result.get('response', '').strip()
+        
+        # Log API response if enabled
+        if api_logger:
+            api_logger.info(f"RESPONSE: {json.dumps(result, ensure_ascii=False)}")
         
         # Extract just the first word
         if generated_text:
@@ -65,12 +98,12 @@ def get_next_word(model_name, context):
         print(f"\nFehler bei der Textgenerierung: {e}")
         return "..."
 
-def get_user_input(prompt=""):
-    """Get user input without line break, supports backspace"""
-    sys.stdout.write(prompt)
-    sys.stdout.flush()
-    
+def get_user_input_realtime():
+    """Get user input character by character, ending at non-alphanumeric chars"""
     chars = []
+    auto_submit = False
+    last_char = None
+    
     while True:
         # Lese ein einzelnes Zeichen
         char = getch()
@@ -88,23 +121,52 @@ def get_user_input(prompt=""):
         
         # Enter-Taste beendet die Eingabe
         if char in ['\r', '\n']:
-            sys.stdout.write(' ')  # Kleiner Puffer nach dem Wort
-            sys.stdout.flush()
+            auto_submit = True
             break
         
         # Zeichen zur Eingabe hinzufügen und anzeigen
         chars.append(char)
         sys.stdout.write(char)
         sys.stdout.flush()
+        last_char = char
+        
+        # Wenn letztes Zeichen nicht alphanumerisch ist, automatisch Submit
+        if chars and not char.isalnum():
+            auto_submit = True
+            break
     
-    return ''.join(chars)
+    text = ''.join(chars)
+    return text, auto_submit, last_char
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Interaktives Duett-Schreiben mit Ollama")
+    parser.add_argument("--log", action="store_true", help="API-Kommunikation loggen")
+    parser.add_argument("--temp", type=float, default=0.7, 
+                        help="Temperatur für die Textgenerierung (0.1-2.0, Standard: 0.7)")
+    parser.add_argument("--model", type=str, help="Spezifisches Ollama-Modell verwenden")
+    
+    return parser.parse_args()
 
 def main():
     """Main interactive duet writing function"""
+    # Parse arguments
+    args = parse_arguments()
+    
+    # Setup logging if enabled
+    api_logger = setup_logger(args.log)
+    
+    # Validate temperature
+    temperature = args.temp
+    if temperature < 0.1 or temperature > 2.0:
+        print("Warnung: Temperatur sollte zwischen 0.1 und 2.0 liegen. Verwende 0.7.")
+        temperature = 0.7
+    
     print("Interaktives Duett mit Ollama")
     print("-----------------------------")
-    print("Schreibe ein Wort und drücke Enter. Die KI fügt das nächste Wort hinzu.")
+    print("Schreibe und beende mit Enter oder einem Satzzeichen. Die KI schreibt das nächste Wort.")
     print("Verwende Backspace, um Tippfehler zu korrigieren.")
+    print(f"Temperatur: {temperature}")
     print("Drücke Strg+C zum Beenden.\n")
     
     # Try to connect to Ollama
@@ -114,20 +176,43 @@ def main():
         models = response.json().get("models", [])
         
         # Select appropriate model
-        model_name = None
-        preferred_models = ["llama3", "llama3:8b", "mistral", "gemma:7b"]
+        model_name = args.model
         
-        for preferred in preferred_models:
-            for model in models:
-                if preferred in model["name"].lower():
-                    model_name = model["name"]
+        if not model_name:
+            # Automatische Modellauswahl
+            preferred_models = ["llama3", "llama3:8b", "mistral", "gemma:7b"]
+            
+            for preferred in preferred_models:
+                for model in models:
+                    if preferred in model["name"].lower():
+                        model_name = model["name"]
+                        break
+                if model_name:
                     break
-            if model_name:
-                break
+            
+            if not model_name and models:
+                # Use the first available model if preferred ones aren't found
+                model_name = models[0]["name"]
         
-        if not model_name and models:
-            # Use the first available model if preferred ones aren't found
-            model_name = models[0]["name"]
+        # Check if specified model exists
+        if model_name and model_name not in [m["name"] for m in models]:
+            print(f"Warnung: Modell '{model_name}' nicht gefunden. Verfügbare Modelle:")
+            for model in models:
+                print(f"- {model['name']}")
+            print("\nVerwende automatische Modellauswahl.")
+            model_name = None
+            
+            # Erneute automatische Auswahl
+            for preferred in ["llama3", "llama3:8b", "mistral", "gemma:7b"]:
+                for model in models:
+                    if preferred in model["name"].lower():
+                        model_name = model["name"]
+                        break
+                if model_name:
+                    break
+            
+            if not model_name and models:
+                model_name = models[0]["name"]
         
         if not model_name:
             print("Kein Ollama-Modell gefunden. Bitte installiere ein Modell mit 'ollama pull llama3'")
@@ -146,12 +231,12 @@ def main():
     try:
         # Main interaction loop
         sentence = ""
-        sys.stdout.write("\nStarte das Duett (gib das erste Wort ein): ")
+        sys.stdout.write("\nStarte das Duett (schreibe): ")
         sys.stdout.flush()
         
         while True:
-            # Get user input - ohne Zeilenumbruch
-            input_text = get_user_input()
+            # Get user input character by character
+            input_text, auto_submit, last_char = get_user_input_realtime()
             
             # Handle empty input
             if not input_text.strip():
@@ -162,10 +247,17 @@ def main():
             # Initialize or append to sentence
             if not sentence:
                 sentence = input_text
-            elif input_text[-1].isalnum():
+            elif last_char and last_char.isalnum() and auto_submit:
+                # Wenn automatischer Submit durch Enter und letztes Zeichen ist alphanumerisch
                 sentence += " " + input_text
             else:
-                sentence += input_text
+                # Wenn durch Sonderzeichen automatischer Submit oder letztes Zeichen ist nicht alphanumerisch
+                sentence += " " + input_text
+            
+            # Kleiner Puffer, wenn nicht automatisch abgesendet wurde
+            if not auto_submit:
+                sys.stdout.write(" ")
+                sys.stdout.flush()
             
             # Use the last 50 words as context to keep memory usage low
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
@@ -175,7 +267,7 @@ def main():
             sys.stdout.flush()
             
             # Get the next word from the model
-            next_word = get_next_word(model_name, context)
+            next_word = get_next_word(model_name, context, temperature, api_logger)
             
             # Clear the thinking indicator with backspaces
             sys.stdout.write("\b\b\b\b")
