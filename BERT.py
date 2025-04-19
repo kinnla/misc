@@ -152,8 +152,9 @@ def get_user_input_realtime():
             
             # Handle dead keys (option+u on macOS)
             # When Option+u is pressed, some systems report special characters
-            if char in ['\x00', '\x1b', '\xc2\xa8', '¨']:
+            if char in ['\x00', '\x1b', '\xc2\xa8', '¨', '˙', '´', '`', '^']:
                 composing_char = True
+                # Important: don't trigger auto-submit for accent/umlaut keys
                 continue
             
             # If we just saw a dead key, this char might be the base vowel
@@ -173,8 +174,10 @@ def get_user_input_realtime():
             
             # Enter key ends input
             if char in ['\r', '\n']:
-                auto_submit = True
-                break
+                # Make sure we don't interrupt an umlaut composition
+                if not composing_char:
+                    auto_submit = True
+                    break
             
             # Try to handle the character more safely
             try:
@@ -188,8 +191,17 @@ def get_user_input_realtime():
                 sys.stdout.flush()
                 last_char = char
                 
-                # If the last character is not alphanumeric, auto-submit
-                if not char.isalnum():
+                # Check if the character should trigger auto-submit
+                # Special case for punctuation marks that should trigger auto-submit
+                auto_submit_chars = ['.', ',', '!', '?', ':', ';', '-', ')', ']', '}', '/']
+                
+                # If it's a punctuation mark (but not an umlaut or accent), auto-submit
+                if char in auto_submit_chars:
+                    auto_submit = True
+                    break
+                    
+                # For other non-alphanumeric chars, check if they're likely to be accents/umlauts
+                if not char.isalnum() and not any(c in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç' for c in char):
                     auto_submit = True
                     break
             except ValueError:
@@ -318,8 +330,8 @@ def main():
             # Initialize or append to sentence
             if not sentence:
                 sentence = input_text
-            elif last_char and last_char.isalnum() and auto_submit:
-                # Wenn automatischer Submit durch Enter und letztes Zeichen ist alphanumerisch
+            elif last_char and (last_char.isalnum() or last_char in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç') and auto_submit:
+                # Wenn automatischer Submit durch Enter und letztes Zeichen ist alphanumerisch oder ein Umlaut
                 sentence += " " + input_text
             else:
                 # Wenn durch Sonderzeichen automatischer Submit oder letztes Zeichen ist nicht alphanumerisch
