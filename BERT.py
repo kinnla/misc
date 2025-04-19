@@ -82,7 +82,7 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         data = {
             "model": model_name,
             "prompt": context,
-            "system": "Du bist ein Schriftsteller, der einen Text zusammen mit einem anderen Autor schreibt, abwechselnd Wort für Wort. Gib immer nur ein einzelnes passendes Wort zurück, das den Satz sinnvoll weiterführt.",
+            "system": "Du bist ein Schriftsteller, der einen Text zusammen mit einem anderen Autor schreibt, abwechselnd Wort für Wort. Gib immer nur ein einzelnes passendes Wort zurück, das den Satz sinnvoll weiterführt. Du darfst auch Satzzeichen wie Punkt, Komma, Ausrufezeichen oder Fragezeichen verwenden, um den Satz zu strukturieren. Achte auf eine sinnvolle Zeichensetzung.",
             "stream": False,
             "options": {
                 "temperature": temperature,
@@ -192,7 +192,7 @@ def get_user_input_realtime():
                 last_char = char
                 
                 # Check if the character should trigger auto-submit
-                # Special case for punctuation marks that should trigger auto-submit
+                # Special case for punctuation marks that should trigger auto-submit (excluding space)
                 auto_submit_chars = ['.', ',', '!', '?', ':', ';', '-', ')', ']', '}', '/']
                 
                 # If it's a punctuation mark (but not an umlaut or accent), auto-submit
@@ -200,8 +200,19 @@ def get_user_input_realtime():
                     auto_submit = True
                     break
                     
+                # Special handling for space: only auto-submit if the last character in the text was also a space
+                # This prevents auto-submitting when the user wants to add a space after the AI's contribution
+                if char == ' ':
+                    # Check if the sentence ends with a space already
+                    if sentence and sentence.endswith(' '):
+                        auto_submit = True
+                        break
+                    else:
+                        # Don't auto-submit for the first space after text
+                        continue
+                
                 # For other non-alphanumeric chars, check if they're likely to be accents/umlauts
-                if not char.isalnum() and not any(c in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç' for c in char):
+                if not char.isalnum() and not char.isspace() and not any(c in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç' for c in char):
                     auto_submit = True
                     break
             except ValueError:
@@ -327,14 +338,32 @@ def main():
                 sys.stdout.flush()
                 continue
             
-            # Initialize or append to sentence
+            # Behandlung der Eingabe je nach Kontext
+            input_is_punctuation = input_text in [".", ",", "!", "?", ":", ";"] or (
+                len(input_text) > 0 and input_text[0] in [".", ",", "!", "?", ":", ";"]
+            )
+            
+            # Fall 1: Erste Eingabe überhaupt
             if not sentence:
                 sentence = input_text
-            elif last_char and (last_char.isalnum() or last_char in 'äöüÄÖÜáéíóúàèìòùâêîôûëïÿç') and auto_submit:
-                # Wenn automatischer Submit durch Enter und letztes Zeichen ist alphanumerisch oder ein Umlaut
-                sentence += " " + input_text
+            
+            # Fall 2: Eingabe ist ein Satzzeichen
+            elif input_is_punctuation:
+                # Satzzeichen direkt ohne Leerzeichen anhängen
+                sentence += input_text
+                
+                # Bei Satzendzeichen ein Leerzeichen nachträglich hinzufügen
+                if any(input_text.endswith(c) for c in [".", "!", "?"]):
+                    sentence += " "
+            
+            # Fall 3: Normale Eingabe mit Leerzeichen vorher
+            elif sentence.endswith(" "):
+                # Wenn der Satz bereits mit Leerzeichen endet, ohne weiteres anhängen
+                sentence += input_text
+            
+            # Fall 4: Normale Eingabe ohne Leerzeichen vorher
             else:
-                # Wenn durch Sonderzeichen automatischer Submit oder letztes Zeichen ist nicht alphanumerisch
+                # Leerzeichen hinzufügen und dann die Eingabe
                 sentence += " " + input_text
             
             # Kleiner Puffer, wenn nicht automatisch abgesendet wurde
@@ -356,18 +385,43 @@ def main():
             sys.stdout.write("\b\b\b\b")
             sys.stdout.flush()
             
-            # Prüfe, ob das Wort einen Punkt enthält und korrigiere die Ausgabe
-            if "." in next_word:
-                # Wenn das Wort mit einem Punkt endet, gib es ohne Leerzeichen aus
+            # Behandlung von Satzzeichen im Modelloutput
+            is_punctuation = next_word in [".", ",", "!", "?", ":", ";"] or next_word.startswith((".", ",", "!", "?"))
+            
+            # Prüfe, ob wir die drei Punkte "..." erhalten haben (Fallback)
+            if next_word == "...":
+                # Versuche es noch einmal mit einem anderen Prompt
+                retry_word = get_next_word(
+                    model_name, 
+                    context + " [Bitte gib nur ein einzelnes Wort zurück]", 
+                    temperature, 
+                    api_logger
+                )
+                if retry_word and retry_word != "...":
+                    next_word = retry_word
+            
+            # Handhabung des Outputs basierend auf Worttyp
+            if is_punctuation:
+                # Wenn es ein Satzzeichen ist, füge es ohne Leerzeichen hinzu
                 sys.stdout.write(f"{next_word}")
                 sys.stdout.flush()
+                
+                # Füge ein Leerzeichen nach dem Satzzeichen hinzu, wenn es ein Satzendzeichen ist
+                if next_word in [".", "!", "?"]:
+                    sys.stdout.write(" ")
+                    sys.stdout.flush()
+                    # Add the word to the sentence with space after
+                    sentence += next_word + " "
+                else:
+                    # For commas and other punctuation, just add without trailing space
+                    sentence += next_word
             else:
                 # Normales Wort mit Leerzeichen
                 sys.stdout.write(f"{next_word} ")
                 sys.stdout.flush()
-            
-            # Add the word to the sentence
-            sentence += " " + next_word
+                
+                # Add the word to the sentence with space
+                sentence += " " + next_word
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
