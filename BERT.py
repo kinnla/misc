@@ -2,72 +2,109 @@
 # coding: utf-8
 
 """
-Interactive duet writing with GPT-2
+Interactive duet writing with Ollama
 
 This script creates an interactive writing experience where the user and AI
-take turns writing one word at a time to co-create text.
+take turns writing one word at a time to co-create text. It uses a locally running
+Ollama model to generate text.
 """
 
-import torch
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
-import logging
 import sys
+import logging
+import requests
+import json
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
 
-def get_next_word(model, tokenizer, context):
-    """Get the next word from the model based on the given context"""
-    # Properly tokenize the input with attention mask
-    encoded_input = tokenizer(context, return_tensors='pt', padding=True)
-    input_ids = encoded_input['input_ids']
-    attention_mask = encoded_input['attention_mask']
-    
-    # Generate the next token
-    with torch.no_grad():
-        output = model.generate(
-            input_ids,
-            attention_mask=attention_mask,
-            max_length=input_ids.shape[1] + 2,  # Allow for up to 2 more tokens
-            num_return_sequences=1,
-            pad_token_id=tokenizer.eos_token_id,
-            do_sample=True,
-            temperature=0.7,
-            top_k=40,
-            top_p=0.9
-        )
-    
-    # Get the full generated text
-    generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-    
-    # Extract only the new part (what was added after the context)
-    new_part = generated_text[len(context):].strip()
-    
-    # Get just the first word of the new part
-    if new_part:
-        words = new_part.split()
-        if words:
-            return words[0]
-    
-    # Fallback if no meaningful word was generated
-    return "..."
+OLLAMA_API = "http://localhost:11434/api/generate"
+
+def get_next_word(model_name, context):
+    """Get the next word from Ollama based on the given context"""
+    try:
+        # Prepare the request for Ollama
+        data = {
+            "model": model_name,
+            "prompt": context,
+            "system": "Du bist ein Schriftsteller, der einen Text zusammen mit einem anderen Autor schreibt, abwechselnd Wort für Wort. Gib immer nur ein einzelnes passendes Wort zurück, das den Satz sinnvoll weiterführt.",
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "top_k": 40,
+                "num_predict": 10  # Limit token generation
+            }
+        }
+        
+        # Make the API request
+        response = requests.post(OLLAMA_API, json=data)
+        response.raise_for_status()
+        
+        # Parse the response
+        result = response.json()
+        generated_text = result.get('response', '').strip()
+        
+        # Extract just the first word
+        if generated_text:
+            words = generated_text.split()
+            if words:
+                return words[0]
+        
+        # Fallback if no meaningful word was generated
+        return "..."
+        
+    except requests.exceptions.RequestException as e:
+        # Handle connection errors
+        print(f"Fehler bei der Verbindung zu Ollama: {e}")
+        print("Ist Ollama installiert und läuft der Server? Starte Ollama mit 'ollama serve'")
+        return "..."
+    except Exception as e:
+        print(f"Fehler bei der Textgenerierung: {e}")
+        return "..."
 
 def main():
     """Main interactive duet writing function"""
     print("Beginne in der nächsten Zeile einen Satz. Die KI wird mit dir im Duett schreiben.\n")
     
+    # Try to connect to Ollama
     try:
-        # Load model and tokenizer directly (once, at the start)
-        print("Lade GPT-2 Modell...")
-        model_name = "distilgpt2"  # Smaller model for memory efficiency
+        response = requests.get("http://localhost:11434/api/tags")
+        response.raise_for_status()
+        models = response.json().get("models", [])
         
-        tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-        # Set the padding token to be the EOS token
-        tokenizer.pad_token = tokenizer.eos_token
+        # Select appropriate model
+        model_name = None
+        preferred_models = ["llama3", "llama3:8b", "mistral", "gemma:7b"]
         
-        model = GPT2LMHeadModel.from_pretrained(model_name)
-        print(f"Modell {model_name} geladen. Du kannst jetzt beginnen.\n")
+        for preferred in preferred_models:
+            for model in models:
+                if preferred in model["name"].lower():
+                    model_name = model["name"]
+                    break
+            if model_name:
+                break
         
+        if not model_name and models:
+            # Use the first available model if preferred ones aren't found
+            model_name = models[0]["name"]
+        
+        if not model_name:
+            print("Kein Ollama-Modell gefunden. Bitte installiere ein Modell mit 'ollama pull llama3'")
+            sys.exit(1)
+            
+        print(f"Verwende Ollama-Modell: {model_name}")
+        print("Du kannst jetzt beginnen.\n")
+        
+    except requests.exceptions.RequestException:
+        print("Konnte keine Verbindung zu Ollama herstellen.")
+        print("Bitte stelle sicher, dass Ollama installiert ist und läuft:")
+        print("1. Installiere Ollama von https://ollama.com/")
+        print("2. Starte den Ollama-Server mit 'ollama serve'")
+        print("3. Lade ein Modell mit 'ollama pull llama3'")
+        sys.exit(1)
+    
+    try:
         # Main interaction loop
         sentence = None
         
@@ -88,11 +125,11 @@ def main():
             else:
                 sentence += input_text
             
-            # Use a sliding window context to keep memory usage low
-            context = ' '.join(sentence.split()[-10:]) if len(sentence.split()) > 10 else sentence
+            # Use the last 50 words as context to keep memory usage low
+            context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
             # Get the next word from the model
-            next_word = get_next_word(model, tokenizer, context)
+            next_word = get_next_word(model_name, context)
             
             # Add the word to the sentence
             sentence += " " + next_word
@@ -102,10 +139,6 @@ def main():
     
     except KeyboardInterrupt:
         print("\nProgramm beendet.")
-    except ImportError as e:
-        print(f"Fehler beim Laden der benötigten Bibliotheken: {e}")
-        print("Bitte installiere die fehlenden Pakete mit 'pip install transformers torch'")
-        sys.exit(1)
     except Exception as e:
         print(f"Ein Fehler ist aufgetreten: {e}")
         sys.exit(1)
