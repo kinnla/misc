@@ -353,15 +353,30 @@ def main():
             # Use the last 50 words as context to keep memory usage low
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
-            # Show thinking indicator
-            sys.stdout.write(" ... ")
+            # Check if the last character is a punctuation mark (and we need to add a space)
+            # This ensures proper spacing when user ends with punctuation
+            if sentence and sentence[-1] in ['.', ',', '!', '?', ':', ';'] and not sentence.endswith(" "):
+                # Add space if we end with punctuation and no space
+                sys.stdout.write(" ")
+                sys.stdout.flush()
+                sentence += " "
+                print_debug(f"Added space after punctuation: {sentence}", debug_mode)
+            
+            # Show thinking indicator - add space only if needed
+            if sentence and not sentence.endswith(" "):
+                sys.stdout.write(" ... ")
+            else:
+                sys.stdout.write("... ")
             sys.stdout.flush()
             
             # Get the next word from the model
             next_word = get_next_word(model_name, context, temperature, api_logger)
             
-            # Clear the thinking indicator with backspaces
-            sys.stdout.write("\b\b\b\b\b")
+            # Clear the thinking indicator with backspaces (accounting for possible space)
+            if sentence and not sentence.endswith(" "):
+                sys.stdout.write("\b\b\b\b\b\b")  # 6 chars: " ... "
+            else:
+                sys.stdout.write("\b\b\b\b")  # 4 chars: "... "
             sys.stdout.flush()
             
             # Handle punctuation in the output
