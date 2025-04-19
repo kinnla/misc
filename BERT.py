@@ -19,8 +19,8 @@ import argparse
 import datetime
 from getch import getch
 
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
+# Configure logging - disable console output
+logging.basicConfig(level=logging.ERROR, handlers=[])
 
 OLLAMA_API = "http://localhost:11434/api/generate"
 
@@ -50,7 +50,7 @@ def setup_logger(log_enabled=False):
     # Add handler to logger
     logger.addHandler(file_handler)
     
-    print(f"API-Logs werden in {log_filename} gespeichert")
+    # No terminal output for logging
     return logger
 
 def get_next_word(model_name, context, temperature=0.7, api_logger=None):
