@@ -15,18 +15,7 @@ import requests
 import json
 import re
 import os
-
-# Versuche readline zu importieren für bessere Eingabebehandlung
-try:
-    import readline
-except ImportError:
-    pass
-
-# Versuche getch zu importieren, falls verfügbar
-try:
-    from getch import getch
-except ImportError:
-    getch = None
+from getch import getch
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
@@ -77,25 +66,30 @@ def get_next_word(model_name, context):
         return "..."
 
 def get_user_input(prompt=""):
-    """Get user input without line break"""
-    # Verwende eine eigene einfache Eingabemethode
+    """Get user input without line break, supports backspace"""
     sys.stdout.write(prompt)
     sys.stdout.flush()
     
     chars = []
     while True:
         # Lese ein einzelnes Zeichen
-        if getch:
-            # Wenn getch verfügbar ist
-            char = getch()
-            if isinstance(char, bytes):
-                char = char.decode('utf-8')
-        else:
-            # Fallback ohne getch
-            char = sys.stdin.read(1)
+        char = getch()
+        if isinstance(char, bytes):
+            char = char.decode('utf-8', errors='replace')
+        
+        # ASCII-Werte für Backspace sind 8 oder 127 (DEL)
+        if char in ['\b', '\x7f']:
+            if chars:  # Nur löschen, wenn Zeichen vorhanden sind
+                chars.pop()  # letztes Zeichen aus der Liste entfernen
+                # Backspace, Space, Backspace ausgeben, um das Zeichen zu löschen
+                sys.stdout.write('\b \b')
+                sys.stdout.flush()
+            continue
         
         # Enter-Taste beendet die Eingabe
         if char in ['\r', '\n']:
+            sys.stdout.write(' ')  # Kleiner Puffer nach dem Wort
+            sys.stdout.flush()
             break
         
         # Zeichen zur Eingabe hinzufügen und anzeigen
@@ -110,14 +104,8 @@ def main():
     print("Interaktives Duett mit Ollama")
     print("-----------------------------")
     print("Schreibe ein Wort und drücke Enter. Die KI fügt das nächste Wort hinzu.")
+    print("Verwende Backspace, um Tippfehler zu korrigieren.")
     print("Drücke Strg+C zum Beenden.\n")
-    
-    # Prüfe, ob getch verfügbar ist
-    if not getch:
-        print("Hinweis: Die getch-Bibliothek ist nicht installiert.")
-        print("Für eine bessere Eingabeerfahrung kannst du sie installieren mit:")
-        print("pip install getch")
-        print()
     
     # Try to connect to Ollama
     try:
@@ -183,24 +171,24 @@ def main():
             context = ' '.join(sentence.split()[-50:]) if len(sentence.split()) > 50 else sentence
             
             # Show thinking indicator
-            sys.stdout.write(" ... ")
+            sys.stdout.write("... ")
             sys.stdout.flush()
             
             # Get the next word from the model
             next_word = get_next_word(model_name, context)
             
             # Clear the thinking indicator with backspaces
-            sys.stdout.write("\b\b\b\b\b")
+            sys.stdout.write("\b\b\b\b")
             sys.stdout.flush()
             
             # Prüfe, ob das Wort einen Punkt enthält und korrigiere die Ausgabe
             if "." in next_word:
                 # Wenn das Wort mit einem Punkt endet, gib es ohne Leerzeichen aus
-                sys.stdout.write(f" {next_word}")
+                sys.stdout.write(f"{next_word}")
                 sys.stdout.flush()
             else:
                 # Normales Wort mit Leerzeichen
-                sys.stdout.write(f" {next_word} ")
+                sys.stdout.write(f"{next_word} ")
                 sys.stdout.flush()
             
             # Add the word to the sentence
