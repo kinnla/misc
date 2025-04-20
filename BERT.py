@@ -108,16 +108,16 @@ def get_next_word(model_name, context, temperature=0.7, logger=None):
                 return words[0]
         
         # Fallback if no meaningful word was generated
-        return "..."
+        return "[...]"
         
     except requests.exceptions.RequestException as e:
         # Handle connection errors
         print(f"\nFehler bei der Verbindung zu Ollama: {e}")
         print("Ist Ollama installiert und läuft der Server? Starte Ollama mit 'ollama serve'")
-        return "..."
+        return "[...]"
     except Exception as e:
         print(f"\nFehler bei der Textgenerierung: {e}")
-        return "..."
+        return "[...]"
 
 def read_single_char():
     """Read a single character from stdin without waiting for Enter key"""
@@ -409,7 +409,7 @@ class TextState:
     def clear_thinking(self):
         """Clear thinking indicator"""
         # Go back 5 characters and clear them with spaces
-        sys.stdout.write("\b\b\b\b\b     \b\b\b\b\b")
+        sys.stdout.write("\b\b\b\b\b")
         sys.stdout.flush()
 
 def parse_arguments():
@@ -571,8 +571,8 @@ def main():
             # Clear the thinking indicator
             state.clear_thinking()
             
-            # Sometimes the model returns "..." as a fallback
-            if next_word == "..." or next_word == "[...]":
+            # Sometimes the model returns "[...]" as a fallback
+            if next_word == "[...]":
                 if logger:
                     logger.debug("Got fallback response, trying again with clearer prompt")
                 
@@ -587,8 +587,8 @@ def main():
                 if logger:
                     logger.debug(f"Second attempt returned: '{next_attempt}'")
                 
-                # Use the new result if it's not also "..."
-                if next_attempt != "..." and next_attempt != "[...]":
+                # Use the new result if it's not also "[...]"
+                if next_attempt != "[...]":
                     next_word = next_attempt
                     if logger:
                         logger.debug(f"Using second attempt: '{next_word}'")
