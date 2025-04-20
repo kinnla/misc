@@ -189,7 +189,9 @@ class TextState:
         if self.text.endswith(" "):
             # Remove trailing space from internal state only
             self.text = self.text[:-1]
-            # Don't modify the screen - already handled during input
+            # Also remove it from the screen for good measure
+            sys.stdout.write("\b")
+            sys.stdout.flush()
         
         # Add punctuation to internal state
         self.text += punct
@@ -329,12 +331,15 @@ class TextState:
                 # Handle punctuation specially - check if we need to remove leading space
                 is_punctuation = char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128
                 
-                # Handle punctuation differently - remove trailing space if needed
-                if is_punctuation and user_input and user_input[-1] == ' ':
-                    # Remove trailing space from input
-                    user_input = user_input[:-1]
-                    # Go back one space on screen
-                    sys.stdout.write("\b")
+                # Handle punctuation differently - check for space before it
+                if is_punctuation:
+                    # Check if there's a space right before the punctuation
+                    if user_input and user_input[-1] == ' ':
+                        # Remove trailing space from input buffer
+                        user_input = user_input[:-1]
+                        # Go back one space on screen to visually remove it
+                        sys.stdout.write("\b")
+                        self.debug("Removed space before punctuation")
                 
                 # Add character to input
                 user_input += char
@@ -394,6 +399,7 @@ class TextState:
                 # Go back one space on the screen to remove the visual space
                 sys.stdout.write("\b")
                 sys.stdout.flush()
+                self.debug("Removed space before punctuation in process_user_input")
                 
             # 2. Add the punctuation
             self.text += punct
