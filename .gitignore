@@ -55,6 +55,7 @@ env/
 .vscode/
 *.swp
 *.swo
+CLAUDE.local.md
 
 # Temporary OCR files
 temp_ocr_*.pdf
