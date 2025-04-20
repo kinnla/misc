@@ -329,6 +329,13 @@ class TextState:
                 # Handle punctuation specially - check if we need to remove leading space
                 is_punctuation = char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128
                 
+                # Handle punctuation differently - remove trailing space if needed
+                if is_punctuation and user_input and user_input[-1] == ' ':
+                    # Remove trailing space from input
+                    user_input = user_input[:-1]
+                    # Go back one space on screen
+                    sys.stdout.write("\b")
+                
                 # Add character to input
                 user_input += char
                 self.debug(f"Current input buffer: '{user_input}'")
