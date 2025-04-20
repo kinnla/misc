@@ -312,15 +312,29 @@ class TextState:
                     self.debug("Space with empty input, submitting without adding space")
                     break
                 
-                # Add character to input and display it
-                user_input += char
-                # We only write to stdout here, not to the text state
-                # The actual text state update happens in process_user_input
-                sys.stdout.write(char)
-                sys.stdout.flush()
+                # Handle punctuation specially - check if we need to remove leading space
+                is_punctuation = char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128
                 
-                # Auto-submit on punctuation
-                if char in ['.', ',', '!', '?', ':', ';'] and ord(char) < 128:
+                # Add character to input
+                user_input += char
+                
+                # For punctuation, we need special display handling
+                if is_punctuation and self.text.endswith(" "):
+                    # If punctuation and text ends with space:
+                    # 1. Remove the space on screen
+                    sys.stdout.write("\b")
+                    # 2. Write the punctuation
+                    sys.stdout.write(char)
+                    # 3. Write a space after
+                    sys.stdout.write(" ")
+                    sys.stdout.flush()
+                else:
+                    # Normal character display
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+                
+                # Auto-submit on punctuation  
+                if is_punctuation:
                     self.debug(f"Punctuation detected: {char}, submitting")
                     break
                 
