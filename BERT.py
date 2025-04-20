@@ -168,28 +168,23 @@ class TextState:
         self.text += text
     
     def append_punctuation(self, punct):
-        """Append punctuation mark correctly, but don't write to screen"""
-        # For punctuation, we need to make sure:
-        # 1. No space before the punctuation
-        # 2. Add space after the punctuation
-        # 3. The visual representation matches the internal state
+        """Append punctuation mark correctly, but don't write to screen again"""
+        # For punctuation, we need to make sure it's added correctly to the internal state
+        # The visual display has already been handled during input
         
-        # Handle space before punctuation
+        # Check for existing space before punctuation
         if self.text.endswith(" "):
-            # Remove trailing space from internal state
+            # Remove trailing space from internal state only
             self.text = self.text[:-1]
-            
-            # Remove space from screen as well - go back one character
-            sys.stdout.write("\b")
-            sys.stdout.flush()
+            # Don't modify the screen - already handled during input
         
-        # Add punctuation to internal state only
+        # Add punctuation to internal state
         self.text += punct
         
         # Add space after punctuation in internal state
         self.text += " "
         
-        # Add space to display as well since the user hasn't seen it yet
+        # Add space to display as well
         sys.stdout.write(" ")
         sys.stdout.flush()
     
@@ -318,16 +313,14 @@ class TextState:
                 # Add character to input
                 user_input += char
                 
-                # For punctuation, we need special display handling
-                if is_punctuation and self.text.endswith(" "):
-                    # If punctuation and text ends with space:
-                    # 1. Remove the space on screen
-                    sys.stdout.write("\b")
-                    # 2. Write the punctuation
+                # For punctuation, display it correctly
+                if is_punctuation:
+                    # Always display the punctuation normally first
                     sys.stdout.write(char)
-                    # 3. Write a space after
-                    sys.stdout.write(" ")
                     sys.stdout.flush()
+                    
+                    # We don't add a space automatically here anymore - that'll be handled
+                    # during processing, not during input
                 else:
                     # Normal character display
                     sys.stdout.write(char)
@@ -513,6 +506,22 @@ def main():
             
             # Clear the thinking indicator
             state.clear_thinking()
+            
+            # Sometimes the model returns "..." as a fallback
+            if next_word == "...":
+                # Try once more with a clearer prompt
+                state.display_thinking()
+                next_attempt = get_next_word(
+                    model_name,
+                    context + " [Bitte gib ein einzelnes sinnvolles Wort zurück]",
+                    temperature,
+                    api_logger
+                )
+                state.clear_thinking()
+                
+                # Use the new result if it's not also "..."
+                if next_attempt != "...":
+                    next_word = next_attempt
             
             # Add AI word to text
             state.append_ai_word(next_word)
