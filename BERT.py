@@ -313,18 +313,10 @@ class TextState:
                 # Add character to input
                 user_input += char
                 
-                # For punctuation, display it correctly
-                if is_punctuation:
-                    # Always display the punctuation normally first
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
-                    
-                    # We don't add a space automatically here anymore - that'll be handled
-                    # during processing, not during input
-                else:
-                    # Normal character display
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
+                # For all characters, just display them normally during input
+                # We'll handle special formatting during processing
+                sys.stdout.write(char)
+                sys.stdout.flush()
                 
                 # Auto-submit on punctuation  
                 if is_punctuation:
@@ -351,21 +343,52 @@ class TextState:
             # Empty input, just continue
             return
             
-        # Special case for punctuation
-        if input_text in ['.', ',', '!', '?', ':', ';']:
+        # Check if input ends with punctuation
+        ends_with_punct = input_text and input_text[-1] in ['.', ',', '!', '?', ':', ';']
+        
+        if len(input_text) == 1 and ends_with_punct:
+            # Single punctuation character
             self.append_punctuation(input_text)
+        elif ends_with_punct:
+            # Word ending with punctuation - special handling
+            # Split into word and punctuation
+            word = input_text[:-1]
+            punct = input_text[-1]
+            
+            # Add the word first
+            self.append_with_space_check(word)
+            
+            # Then handle the punctuation correctly
+            # For punctuation after a word, we need to:
+            # 1. Remove any space that might have been added after the word
+            if self.text.endswith(" "):
+                self.text = self.text[:-1]
+                # Go back one space on the screen to remove the visual space
+                sys.stdout.write("\b")
+                sys.stdout.flush()
+                
+            # 2. Add the punctuation
+            self.text += punct
+            
+            # 3. Add a space after the punctuation
+            self.text += " "
+            # Add space to the screen
+            sys.stdout.write(" ")
+            sys.stdout.flush()
         else:
-            # Normal text input
+            # Normal text input without punctuation
             self.append_with_space_check(input_text)
     
     def display_thinking(self):
         """Show thinking indicator"""
-        sys.stdout.write("... ")
+        # Use a more visible thinking indicator that's easier to clear
+        sys.stdout.write("[...]")
         sys.stdout.flush()
     
     def clear_thinking(self):
         """Clear thinking indicator"""
-        sys.stdout.write("\b\b\b\b")
+        # Go back 5 characters and clear them with spaces
+        sys.stdout.write("\b\b\b\b\b     \b\b\b\b\b")
         sys.stdout.flush()
 
 def parse_arguments():
@@ -508,16 +531,14 @@ def main():
             state.clear_thinking()
             
             # Sometimes the model returns "..." as a fallback
-            if next_word == "...":
+            if next_word == "..." or next_word == "[...]":
                 # Try once more with a clearer prompt
-                state.display_thinking()
                 next_attempt = get_next_word(
                     model_name,
                     context + " [Bitte gib ein einzelnes sinnvolles Wort zurück]",
                     temperature,
                     api_logger
                 )
-                state.clear_thinking()
                 
                 # Use the new result if it's not also "..."
                 if next_attempt != "...":
