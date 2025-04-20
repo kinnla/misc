@@ -23,34 +23,66 @@ logging.basicConfig(level=logging.ERROR, handlers=[])
 
 OLLAMA_API = "http://localhost:11434/api/generate"
 
-def setup_logger(log_enabled=False):
-    """Setup logger for API interactions"""
-    if not log_enabled:
-        return None
-        
-    # Create logger
-    logger = logging.getLogger("ollama_api")
-    logger.setLevel(logging.INFO)
+def setup_logger(log_enabled=False, debug_mode=False):
+    """Setup logger for API interactions and debug messages
     
+    Args:
+        log_enabled: Whether to log API interactions
+        debug_mode: Whether to log detailed debug information
+        
+    Returns:
+        A tuple of (api_logger, debug_logger) or (None, None) if logging is disabled
+    """
+    if not log_enabled and not debug_mode:
+        return None, None
+        
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
     
-    # Create file handler with timestamp in filename
+    # Create timestamp for filenames
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
-    log_filename = os.path.join(logs_dir, f"{timestamp}_ollama_duett.log")
-    file_handler = logging.FileHandler(log_filename)
     
-    # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(message)s')
-    file_handler.setFormatter(formatter)
+    # Setup API logger if enabled
+    api_logger = None
+    if log_enabled:
+        api_logger = logging.getLogger("ollama_api")
+        api_logger.setLevel(logging.INFO)
+        
+        # API log file with timestamp
+        api_log_filename = os.path.join(logs_dir, f"{timestamp}_api.log")
+        api_file_handler = logging.FileHandler(api_log_filename)
+        
+        # Create formatter
+        api_formatter = logging.Formatter('%(asctime)s - API - %(message)s')
+        api_file_handler.setFormatter(api_formatter)
+        
+        # Add handler to logger
+        api_logger.addHandler(api_file_handler)
+        
+        print(f"API logs will be saved to {api_log_filename}")
     
-    # Add handler to logger
-    logger.addHandler(file_handler)
+    # Setup debug logger if enabled
+    debug_logger = None
+    if debug_mode:
+        debug_logger = logging.getLogger("duett_debug")
+        debug_logger.setLevel(logging.DEBUG)
+        
+        # Debug log file with timestamp
+        debug_log_filename = os.path.join(logs_dir, f"{timestamp}_debug.log")
+        debug_file_handler = logging.FileHandler(debug_log_filename)
+        
+        # Create formatter
+        debug_formatter = logging.Formatter('%(asctime)s - DEBUG - %(message)s')
+        debug_file_handler.setFormatter(debug_formatter)
+        
+        # Add handler to logger
+        debug_logger.addHandler(debug_file_handler)
+        
+        print(f"Debug logs will be saved to {debug_log_filename}")
     
-    # No terminal output for logging
-    return logger
+    return api_logger, debug_logger
 
 def get_next_word(model_name, context, temperature=0.7, api_logger=None):
     """Get the next word from Ollama based on the given context"""
@@ -138,17 +170,14 @@ def read_single_char():
 class TextState:
     """Class to maintain text state and handle display synchronization"""
     
-    def __init__(self, debug_mode=False):
+    def __init__(self, debug_logger=None):
         self.text = ""
-        self.debug_mode = debug_mode
+        self.debug_logger = debug_logger
     
     def debug(self, message):
-        """Print debug message if debug mode is enabled"""
-        if self.debug_mode:
-            print(f"\n[DEBUG] {message}")
-            # Restore prompt
-            sys.stdout.write(f"\n> {self.text}")
-            sys.stdout.flush()
+        """Log debug message if debug logger is enabled"""
+        if self.debug_logger:
+            self.debug_logger.debug(message)
     
     def append_text(self, text):
         """Append text and update display"""
@@ -240,17 +269,18 @@ class TextState:
                     continue
                     
                 # Debug output
-                if self.debug_mode:
-                    try:
-                        self.debug(f"Got char: {repr(char)}, ord: {ord(char)}")
-                    except:
-                        self.debug(f"Got unprintable char")
+                try:
+                    self.debug(f"Got char: {repr(char)}, ord: {ord(char) if char else 'None'}")
+                except:
+                    self.debug(f"Got unprintable char")
                 
                 # Special handling for backspace with umlaut composition
                 if char in ['\b', '\x7f']:
+                    self.debug("Backspace detected")
                     # If we're in the middle of composing an umlaut, cancel the composition
                     if composing_umlaut:
                         composing_umlaut = False
+                        self.debug("Cancelled umlaut composition")
                         continue
                         
                     if user_input:
@@ -263,11 +293,13 @@ class TextState:
                             # And from display (backspace, space, backspace)
                             sys.stdout.write('\b \b')
                             sys.stdout.flush()
+                            self.debug(f"Deleted umlaut: '{last_char}'")
                         else:
                             # Regular backspace behavior
                             user_input = user_input[:-1]
                             sys.stdout.write('\b \b')
                             sys.stdout.flush()
+                            self.debug(f"Deleted character: '{last_char}'")
                     continue
                 
                 # Enter key ends input
@@ -277,13 +309,14 @@ class TextState:
                 
                 # Filter control characters
                 if ord(char) < 32 and char not in ['\t']:
+                    self.debug(f"Skipping control character: {ord(char)}")
                     continue
                 
                 # Handle special character sequences
                 # Check for possible dead keys used for umlaut composition
                 if char in ['\xc2\xa8', '¨', '\xa8']:
                     composing_umlaut = True
-                    self.debug("Umlaut composition detected")
+                    self.debug(f"Umlaut composition detected with char: {repr(char)}")
                     continue
                 
                 # If we were composing an umlaut and got a regular vowel, convert it
@@ -295,10 +328,12 @@ class TextState:
                         'o': 'ö', 'O': 'Ö',
                         'u': 'ü', 'U': 'Ü'
                     }
+                        # Store original char for debugging
+                    orig_char = char
                     # Replace with corresponding umlaut
                     char = umlaut_map.get(char, char)
                     composing_umlaut = False
-                    self.debug(f"Composed umlaut: {char}")
+                    self.debug(f"Composed umlaut: {orig_char} → {char}")
                 
                 # Handle special cases
                 
@@ -312,6 +347,7 @@ class TextState:
                 
                 # Add character to input
                 user_input += char
+                self.debug(f"Current input buffer: '{user_input}'")
                 
                 # For all characters, just display them normally during input
                 # We'll handle special formatting during processing
@@ -330,6 +366,7 @@ class TextState:
                     
             except Exception as e:
                 self.debug(f"Error in input: {str(e)}")
+                self.debug(f"Exception details: {repr(e)}")
                 # Continue with input if we have something
                 if user_input:
                     break
@@ -416,25 +453,27 @@ def main():
     # Parse arguments
     args = parse_arguments()
     
-    # Setup logging if enabled
-    api_logger = setup_logger(args.log)
+    # Setup loggers
+    api_logger, debug_logger = setup_logger(args.log, args.debug)
     
-    # Set debug mode
-    debug_mode = args.debug
+    # Log start of session
+    if debug_logger:
+        debug_logger.debug("Starting new duet writing session")
+        debug_logger.debug(f"Command line args: {args}")
     
     # Validate temperature
     temperature = args.temp
     if temperature < 0.1 or temperature > 2.0:
         print("Warnung: Temperatur sollte zwischen 0.1 und 2.0 liegen. Verwende 0.7.")
         temperature = 0.7
+        if debug_logger:
+            debug_logger.debug(f"Invalid temperature {args.temp}, using 0.7 instead")
     
     print("Interaktives Duett mit Ollama")
     print("-----------------------------")
     print("Schreibe und beende mit Enter oder einem Satzzeichen. Die KI schreibt das nächste Wort.")
     print("Verwende Backspace, um Tippfehler zu korrigieren.")
     print(f"Temperatur: {temperature}")
-    if debug_mode:
-        print("DEBUG-MODUS AKTIV")
     print("Drücke Strg+C zum Beenden.\n")
     
     # Try to connect to Ollama
@@ -497,8 +536,8 @@ def main():
         sys.exit(1)
     
     try:
-        # Initialize text state
-        state = TextState(debug_mode)
+        # Initialize text state with debug logger
+        state = TextState(debug_logger)
         
         # Start prompt
         sys.stdout.write("> ")
@@ -507,10 +546,16 @@ def main():
         # Indicator for LLM busy state
         llm_busy = False
         
+        if debug_logger:
+            debug_logger.debug("Ready for user input")
+        
         # Main interaction loop
         while True:
             # Get user input - block it if LLM is busy responding
             user_input = state.get_user_input(block_input=llm_busy)
+            
+            if debug_logger:
+                debug_logger.debug(f"Got user input: '{user_input}'")
             
             # Process user input
             state.process_user_input(user_input)
@@ -518,20 +563,35 @@ def main():
             # Use the text state as context
             context = state.text
             
+            if debug_logger:
+                debug_logger.debug(f"Current text state: '{context}'")
+            
             # Set LLM busy status to block input during processing
             llm_busy = True
+            
+            if debug_logger:
+                debug_logger.debug("LLM is now busy, blocking user input")
             
             # Show thinking indicator 
             state.display_thinking()
             
+            if debug_logger:
+                debug_logger.debug(f"Requesting next word from model '{model_name}' with temperature {temperature}")
+            
             # Get the next word from the model
             next_word = get_next_word(model_name, context, temperature, api_logger)
+            
+            if debug_logger:
+                debug_logger.debug(f"Model returned: '{next_word}'")
             
             # Clear the thinking indicator
             state.clear_thinking()
             
             # Sometimes the model returns "..." as a fallback
             if next_word == "..." or next_word == "[...]":
+                if debug_logger:
+                    debug_logger.debug("Got fallback response, trying again with clearer prompt")
+                
                 # Try once more with a clearer prompt
                 next_attempt = get_next_word(
                     model_name,
@@ -540,15 +600,26 @@ def main():
                     api_logger
                 )
                 
+                if debug_logger:
+                    debug_logger.debug(f"Second attempt returned: '{next_attempt}'")
+                
                 # Use the new result if it's not also "..."
-                if next_attempt != "...":
+                if next_attempt != "..." and next_attempt != "[...]":
                     next_word = next_attempt
+                    if debug_logger:
+                        debug_logger.debug(f"Using second attempt: '{next_word}'")
             
             # Add AI word to text
             state.append_ai_word(next_word)
             
+            if debug_logger:
+                debug_logger.debug(f"Updated text state: '{state.text}'")
+            
             # LLM is no longer busy - unblock input
             llm_busy = False
+            
+            if debug_logger:
+                debug_logger.debug("LLM is no longer busy, accepting user input")
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
