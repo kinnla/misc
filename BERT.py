@@ -24,67 +24,51 @@ logging.basicConfig(level=logging.ERROR, handlers=[])
 OLLAMA_API = "http://localhost:11434/api/generate"
 
 def setup_logger(log_enabled=False, debug_mode=False):
-    """Setup logger for API interactions and debug messages
+    """Setup a unified logger for API interactions and debug messages
     
     Args:
         log_enabled: Whether to log API interactions
         debug_mode: Whether to log detailed debug information
         
     Returns:
-        A tuple of (api_logger, debug_logger) or (None, None) if logging is disabled
+        The logger object, or None if both logging modes are disabled
     """
     if not log_enabled and not debug_mode:
-        return None, None
+        return None
         
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
     
-    # Create timestamp for filenames
+    # Create timestamp for filename
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
     
-    # Setup API logger if enabled
-    api_logger = None
-    if log_enabled:
-        api_logger = logging.getLogger("ollama_api")
-        api_logger.setLevel(logging.INFO)
-        
-        # API log file with timestamp
-        api_log_filename = os.path.join(logs_dir, f"{timestamp}_api.log")
-        api_file_handler = logging.FileHandler(api_log_filename)
-        
-        # Create formatter
-        api_formatter = logging.Formatter('%(asctime)s - API - %(message)s')
-        api_file_handler.setFormatter(api_formatter)
-        
-        # Add handler to logger
-        api_logger.addHandler(api_file_handler)
-        
-        print(f"API logs will be saved to {api_log_filename}")
+    # Create a single unified logger
+    logger = logging.getLogger("duett_logger")
     
-    # Setup debug logger if enabled
-    debug_logger = None
+    # Set the lowest level needed
     if debug_mode:
-        debug_logger = logging.getLogger("duett_debug")
-        debug_logger.setLevel(logging.DEBUG)
-        
-        # Debug log file with timestamp
-        debug_log_filename = os.path.join(logs_dir, f"{timestamp}_debug.log")
-        debug_file_handler = logging.FileHandler(debug_log_filename)
-        
-        # Create formatter
-        debug_formatter = logging.Formatter('%(asctime)s - DEBUG - %(message)s')
-        debug_file_handler.setFormatter(debug_formatter)
-        
-        # Add handler to logger
-        debug_logger.addHandler(debug_file_handler)
-        
-        print(f"Debug logs will be saved to {debug_log_filename}")
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     
-    return api_logger, debug_logger
+    # Create a single log file with timestamp
+    log_filename = os.path.join(logs_dir, f"{timestamp}_duett.log")
+    file_handler = logging.FileHandler(log_filename)
+    
+    # Create formatter with source prefix
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Add handler to logger
+    logger.addHandler(file_handler)
+    
+    print(f"Logs will be saved to {log_filename}")
+    
+    return logger
 
-def get_next_word(model_name, context, temperature=0.7, api_logger=None):
+def get_next_word(model_name, context, temperature=0.7, logger=None):
     """Get the next word from Ollama based on the given context"""
     try:
         # Prepare the request for Ollama
@@ -102,8 +86,8 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         }
         
         # Log API request if enabled
-        if api_logger:
-            api_logger.info(f"REQUEST: {json.dumps(data, ensure_ascii=False)}")
+        if logger:
+            logger.info(f"API REQUEST: {json.dumps(data, ensure_ascii=False)}")
         
         # Make the API request
         response = requests.post(OLLAMA_API, json=data)
@@ -114,8 +98,8 @@ def get_next_word(model_name, context, temperature=0.7, api_logger=None):
         generated_text = result.get('response', '').strip()
         
         # Log API response if enabled
-        if api_logger:
-            api_logger.info(f"RESPONSE: {json.dumps(result, ensure_ascii=False)}")
+        if logger:
+            logger.info(f"API RESPONSE: {json.dumps(result, ensure_ascii=False)}")
         
         # Extract just the first word
         if generated_text:
@@ -170,14 +154,14 @@ def read_single_char():
 class TextState:
     """Class to maintain text state and handle display synchronization"""
     
-    def __init__(self, debug_logger=None):
+    def __init__(self, logger=None):
         self.text = ""
-        self.debug_logger = debug_logger
+        self.logger = logger
     
     def debug(self, message):
-        """Log debug message if debug logger is enabled"""
-        if self.debug_logger:
-            self.debug_logger.debug(message)
+        """Log debug message if logger is enabled"""
+        if self.logger:
+            self.logger.debug(message)
     
     def append_text(self, text):
         """Append text and update display"""
@@ -453,21 +437,21 @@ def main():
     # Parse arguments
     args = parse_arguments()
     
-    # Setup loggers
-    api_logger, debug_logger = setup_logger(args.log, args.debug)
+    # Setup unified logger
+    logger = setup_logger(args.log, args.debug)
     
     # Log start of session
-    if debug_logger:
-        debug_logger.debug("Starting new duet writing session")
-        debug_logger.debug(f"Command line args: {args}")
+    if logger:
+        logger.debug("Starting new duet writing session")
+        logger.debug(f"Command line args: {args}")
     
     # Validate temperature
     temperature = args.temp
     if temperature < 0.1 or temperature > 2.0:
         print("Warnung: Temperatur sollte zwischen 0.1 und 2.0 liegen. Verwende 0.7.")
         temperature = 0.7
-        if debug_logger:
-            debug_logger.debug(f"Invalid temperature {args.temp}, using 0.7 instead")
+        if logger:
+            logger.debug(f"Invalid temperature {args.temp}, using 0.7 instead")
     
     print("Interaktives Duett mit Ollama")
     print("-----------------------------")
@@ -536,8 +520,8 @@ def main():
         sys.exit(1)
     
     try:
-        # Initialize text state with debug logger
-        state = TextState(debug_logger)
+        # Initialize text state with unified logger
+        state = TextState(logger)
         
         # Start prompt
         sys.stdout.write("> ")
@@ -546,16 +530,16 @@ def main():
         # Indicator for LLM busy state
         llm_busy = False
         
-        if debug_logger:
-            debug_logger.debug("Ready for user input")
+        if logger:
+            logger.debug("Ready for user input")
         
         # Main interaction loop
         while True:
             # Get user input - block it if LLM is busy responding
             user_input = state.get_user_input(block_input=llm_busy)
             
-            if debug_logger:
-                debug_logger.debug(f"Got user input: '{user_input}'")
+            if logger:
+                logger.debug(f"Got user input: '{user_input}'")
             
             # Process user input
             state.process_user_input(user_input)
@@ -563,74 +547,84 @@ def main():
             # Use the text state as context
             context = state.text
             
-            if debug_logger:
-                debug_logger.debug(f"Current text state: '{context}'")
+            if logger:
+                logger.debug(f"Current text state: '{context}'")
             
             # Set LLM busy status to block input during processing
             llm_busy = True
             
-            if debug_logger:
-                debug_logger.debug("LLM is now busy, blocking user input")
+            if logger:
+                logger.debug("LLM is now busy, blocking user input")
             
             # Show thinking indicator 
             state.display_thinking()
             
-            if debug_logger:
-                debug_logger.debug(f"Requesting next word from model '{model_name}' with temperature {temperature}")
+            if logger:
+                logger.debug(f"Requesting next word from model '{model_name}' with temperature {temperature}")
             
             # Get the next word from the model
-            next_word = get_next_word(model_name, context, temperature, api_logger)
+            next_word = get_next_word(model_name, context, temperature, logger)
             
-            if debug_logger:
-                debug_logger.debug(f"Model returned: '{next_word}'")
+            if logger:
+                logger.debug(f"Model returned: '{next_word}'")
             
             # Clear the thinking indicator
             state.clear_thinking()
             
             # Sometimes the model returns "..." as a fallback
             if next_word == "..." or next_word == "[...]":
-                if debug_logger:
-                    debug_logger.debug("Got fallback response, trying again with clearer prompt")
+                if logger:
+                    logger.debug("Got fallback response, trying again with clearer prompt")
                 
                 # Try once more with a clearer prompt
                 next_attempt = get_next_word(
                     model_name,
                     context + " [Bitte gib ein einzelnes sinnvolles Wort zurück]",
                     temperature,
-                    api_logger
+                    logger
                 )
                 
-                if debug_logger:
-                    debug_logger.debug(f"Second attempt returned: '{next_attempt}'")
+                if logger:
+                    logger.debug(f"Second attempt returned: '{next_attempt}'")
                 
                 # Use the new result if it's not also "..."
                 if next_attempt != "..." and next_attempt != "[...]":
                     next_word = next_attempt
-                    if debug_logger:
-                        debug_logger.debug(f"Using second attempt: '{next_word}'")
+                    if logger:
+                        logger.debug(f"Using second attempt: '{next_word}'")
             
             # Add AI word to text
             state.append_ai_word(next_word)
             
-            if debug_logger:
-                debug_logger.debug(f"Updated text state: '{state.text}'")
+            if logger:
+                logger.debug(f"Updated text state: '{state.text}'")
             
             # LLM is no longer busy - unblock input
             llm_busy = False
             
-            if debug_logger:
-                debug_logger.debug("LLM is no longer busy, accepting user input")
+            if logger:
+                logger.debug("LLM is no longer busy, accepting user input")
     
     except KeyboardInterrupt:
         print("\n\nDuett beendet. Finaler Text:")
         print(state.text)
+        if logger:
+            logger.info("User terminated session with Ctrl+C")
+            logger.info(f"Final text: {state.text}")
     except UnicodeError as e:
         print(f"\n\nEin Unicode-Fehler ist aufgetreten: {e}")
         print("Details:", repr(e))
+        if logger:
+            logger.error(f"Unicode error: {e}")
+            logger.error(f"Error details: {repr(e)}")
         sys.exit(1)
     except Exception as e:
         print(f"\n\nEin Fehler ist aufgetreten: {e}")
         print("Details:", repr(e))
+        if logger:
+            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Error details: {repr(e)}")
+            logger.error(f"Stack trace:", exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":
