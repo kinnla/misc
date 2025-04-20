@@ -270,22 +270,14 @@ class TextState:
                         continue
                         
                     if user_input:
-                        # Special case for German umlauts
-                        # Check if we're deleting an umlaut
+                        # Get the last character for debugging
                         last_char = user_input[-1]
-                        if last_char in 'äöüÄÖÜ':
-                            # Remove last character from input
-                            user_input = user_input[:-1]
-                            # And from display (backspace, space, backspace)
-                            sys.stdout.write('\b \b')
-                            sys.stdout.flush()
-                            self.debug(f"Deleted umlaut: '{last_char}'")
-                        else:
-                            # Regular backspace behavior
-                            user_input = user_input[:-1]
-                            sys.stdout.write('\b \b')
-                            sys.stdout.flush()
-                            self.debug(f"Deleted character: '{last_char}'")
+                        # Remove last character from input
+                        user_input = user_input[:-1]
+                        # And from display (backspace, space, backspace)
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
+                        self.debug(f"Deleted character: '{last_char}'")
                     continue
                 
                 # Enter key ends input
