@@ -38,6 +38,9 @@ Images by Oliver David Schmidt
 Class hierarchy for 2D geometric shapes, used in my teaching at Freie Universität (Java).
 https://www.mi.fu-berlin.de/inf/
 
+## python_scripts
+python scripts, most of the vibe coded.
+
 ## serienbrief
 Zwei Serienbriefe (Java, LaTeX), die ich für die Kwan Um Zen Schule Deutschland e.V. erstellt habe. https://kwanumzen.de
 
