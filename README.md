@@ -38,6 +38,9 @@ Images by Oliver David Schmidt
 Class hierarchy for 2D geometric shapes, used in my teaching at Freie Universität (Java).
 https://www.mi.fu-berlin.de/inf/
 
+## prediction
+python scripts related to prediction
+
 ## python_scripts
 python scripts, most of the vibe coded.
 
