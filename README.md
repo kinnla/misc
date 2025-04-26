@@ -38,6 +38,9 @@ Images by Oliver David Schmidt
 Class hierarchy for 2D geometric shapes, used in my teaching at Freie Universität (Java).
 https://www.mi.fu-berlin.de/inf/
 
+## image generation
+scripts that create series of images using stable diffusion.
+
 ## prediction
 python scripts related to prediction
 
