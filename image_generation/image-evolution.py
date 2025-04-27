@@ -219,6 +219,12 @@ def main():
     )
     logging.info(f"Bildevolution gestartet mit Konzept: {args.concept}")
     
+    # Kopiere das Originalbild in das Ausgabeverzeichnis
+    import shutil
+    output_first_image = os.path.join(timestamped_output_dir, "evolution_001.png")
+    shutil.copy2(args.image_path, output_first_image)
+    logging.info(f"Originalbild kopiert nach {output_first_image}")
+    
     # Parameter für die Serie
     current_seed = args.seed
     abstract_concept = args.concept
@@ -238,7 +244,7 @@ def main():
     
     # Listen für Beschreibungen und Bildpfade
     descriptions = []
-    image_paths = [image_path]
+    image_paths = [output_first_image]
     
     # Grundlegende Informationen loggen
     logging.info(f"Ausgangsbild: {image_path}")
