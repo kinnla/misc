@@ -14,8 +14,7 @@ import datetime
 import logging
 
 # Bildparameter
-width = 620  # Breite des Bildes (150 dpi)
-height = 874  # Höhe des Bildes (150 dpi)
+# width and height will be determined from input image
 num_inference_steps = 25  # Qualität und Geschwindigkeit
 cfg_scale = 5.5  # Einfluss des Prompts
 denoising_strength = 0.75
@@ -52,17 +51,28 @@ def save_base64_image(image_data, output_file):
 # Funktion zum Laden eines Bildes und Konvertierung in Base64
 def load_image_as_base64(image_path):
     try:
+        # Open the image to get its dimensions
+        with Image.open(image_path) as img:
+            width, height = img.size
+            logging.info(f"Bildabmessungen: {width}x{height}")
+        
+        # Read binary data
         with open(image_path, "rb") as image_file:
             image_bytes = image_file.read()
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        return "data:image/png;base64," + image_base64
+        return {"data": "data:image/png;base64," + image_base64, "width": width, "height": height}
     except Exception as e:
         logging.error(f"Fehler beim Laden des Bildes: {e}")
         return None
 
 # Funktion zur Bildgenerierung über Bild-zu-Bild
-def generate_image_via_img2img(prompt, init_image, current_seed):
+def generate_image_via_img2img(prompt, image_data, current_seed):
     import requests
+    
+    # Extrahiere die Bildabmessungen und Base64-Daten
+    init_image = image_data["data"]
+    width = image_data["width"]
+    height = image_data["height"]
     
     payload = {
         "prompt": prompt,
@@ -77,7 +87,7 @@ def generate_image_via_img2img(prompt, init_image, current_seed):
         "sd_model_checkpoint": sd_model_checkpoint,
         "negative_prompt": negative_prompt
     }
-    logging.info(f"Sende Bild-zu-Bild-Anfrage mit Seed {current_seed}")
+    logging.info(f"Sende Bild-zu-Bild-Anfrage mit Seed {current_seed} und Größe {width}x{height}")
     response = requests.post(url_img2img, json=payload)
     try:
         response_data = response.json()
@@ -252,14 +262,14 @@ def main():
         prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
         logging.info(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
         
-        # Lade aktuelles Bild als Base64
-        init_image = load_image_as_base64(current_image_path)
-        if not init_image:
+        # Lade aktuelles Bild als Base64 mit Dimensionen
+        image_data = load_image_as_base64(current_image_path)
+        if not image_data:
             logging.error("Fehler beim Laden des Bildes. Breche ab.")
             break
         
-        # Generiere neues Bild
-        new_image_data = generate_image_via_img2img(prompt, init_image, current_seed)
+        # Generiere neues Bild mit den gleichen Dimensionen wie das Eingabebild
+        new_image_data = generate_image_via_img2img(prompt, image_data, current_seed)
         if not new_image_data:
             logging.error("Fehler bei der Bildgenerierung. Breche ab.")
             break
