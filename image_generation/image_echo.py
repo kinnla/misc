@@ -10,13 +10,6 @@ import logging
 from PIL import Image
 import requests
 
-# Default parameters for image generation
-default_num_inference_steps = 30
-default_cfg_scale = 5
-default_denoising_strength = 0.6
-seed = 42
-sampler_index = "Euler a"
-
 # URLs for local Stable Diffusion instance
 url_img2img = "http://127.0.0.1:7860/sdapi/v1/img2img"
 
@@ -73,7 +66,7 @@ def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed
         "height": height,
         "seed": current_seed,
         "denoising_strength": denoising_strength,
-        "sampler_index": sampler_index,
+        "sampler_index": "Euler a",
         "sd_model_checkpoint": sd_model_checkpoint,
         "negative_prompt": negative_prompt
     }
@@ -98,14 +91,14 @@ def main():
     parser.add_argument('concept', help='Abstract concept to use as the prompt')
     parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 10)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
-    parser.add_argument('--seed', type=int, default=seed, help=f'Seed for image generation (default: {seed})')
+    parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
     parser.add_argument('--negative_prompt', default='', help='Negative prompt for stable diffusion')
-    parser.add_argument('--num_inference_steps', type=int, default=default_num_inference_steps, 
-                        help=f'Number of inference steps (default: {default_num_inference_steps})')
-    parser.add_argument('--denoising_strength', type=float, default=default_denoising_strength, 
-                        help=f'Denoising strength (default: {default_denoising_strength})')
-    parser.add_argument('--cfg_scale', type=float, default=default_cfg_scale, 
-                        help=f'CFG scale (default: {default_cfg_scale})')
+    parser.add_argument('--num_inference_steps', type=int, default=30, 
+                        help='Number of inference steps (default: 30)')
+    parser.add_argument('--denoising_strength', type=float, default=0.6, 
+                        help='Denoising strength (default: 0.6)')
+    parser.add_argument('--cfg_scale', type=float, default=5, 
+                        help='CFG scale (default: 5)')
     
     args = parser.parse_args()
     
