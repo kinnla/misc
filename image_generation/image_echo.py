@@ -88,7 +88,7 @@ def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed
 def main():
     parser = argparse.ArgumentParser(description='Image Echo: Generate sequence of images using img2img with the same prompt')
     parser.add_argument('image_path', help='Path to the initial image')
-    parser.add_argument('--concept', help='Abstract concept to use as the prompt (optional)')
+    parser.add_argument('--concept', default='love. high resolution, sharp focus, detailed, shot on Canon EOS R5, 85mm lens, f/1.8, natural lighting', help='Abstract concept to use as the prompt')
     parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 10)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
