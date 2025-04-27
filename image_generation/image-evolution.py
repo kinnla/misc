@@ -6,7 +6,7 @@ import base64
 import argparse
 import os
 import json
-import hashlib
+import Levenshtein
 from PIL import Image
 import io
 import anthropic
@@ -165,24 +165,34 @@ def save_description(description, output_file):
         logging.error(f"Fehler beim Speichern der Beschreibung: {e}")
         return False
 
-# Funktion zum Prüfen auf Wiederholung
-def is_description_repeated(descriptions):
+# Funktion zum Prüfen, ob die Levenshtein-Distanz unter dem Schwellenwert liegt
+def is_description_similar(descriptions, threshold):
     if len(descriptions) < 2:
         return False
     
-    # Berechne Ähnlichkeit zwischen den letzten beiden Beschreibungen
-    # Verwende einen einfachen Ansatz: Hash-basierter Vergleich
-    last_hash = hashlib.md5(descriptions[-1].encode()).hexdigest()
-    second_last_hash = hashlib.md5(descriptions[-2].encode()).hexdigest()
+    # Berechne Levenshtein-Distanz zwischen den letzten beiden Beschreibungen
+    last_desc = descriptions[-1]
+    second_last_desc = descriptions[-2]
     
-    # Alternativ könnte man hier auch komplexere Textähnlichkeitsalgorithmen verwenden
-    return last_hash == second_last_hash
+    # Levenshtein-Distanz berechnen
+    distance = Levenshtein.distance(last_desc, second_last_desc)
+    
+    # Normalisiere die Distanz durch Division durch die maximale Länge der beiden Strings
+    max_length = max(len(last_desc), len(second_last_desc))
+    if max_length > 0:
+        normalized_distance = distance / max_length
+        logging.info(f"Levenshtein-Distanz: {distance} (normalisiert: {normalized_distance:.4f})")
+        
+        # Wenn der normalisierte Abstand kleiner als der Schwellenwert ist, sind die Beschreibungen zu ähnlich
+        return normalized_distance <= threshold
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description='Bildevolution: Von Beschreibung zu Bild und zurück')
     parser.add_argument('image_path', help='Pfad zum Ausgangsbild')
     parser.add_argument('concept', help='Abstrakter Begriff, der der Bildbeschreibung hinzugefügt wird')
-    parser.add_argument('--max_iterations', type=int, default=10, help='Maximale Anzahl von Iterationen (Standard: 10)')
+    parser.add_argument('--iterations', type=int, default=10, help='Anzahl der Iterationen (Standard: 10)')
+    parser.add_argument('--similarity_threshold', type=float, default=0.0, help='Schwellenwert für die normalisierte Levenshtein-Distanz, bei dem die Evolution stoppt (0-1, Standard: 0.0)')
     parser.add_argument('--output_dir', default='evolution_output', help='Ausgabeverzeichnis für die Bilder und Beschreibungen')
     parser.add_argument('--api_key', default=os.environ.get('ANTHROPIC_API_KEY'), help='Claude API-Schlüssel (wenn nicht als Umgebungsvariable ANTHROPIC_API_KEY gesetzt)')
     parser.add_argument('--seed', type=int, default=seed, help=f'Seed für die Bildgenerierung (Standard: {seed})')
@@ -217,7 +227,13 @@ def main():
     current_seed = args.seed
     abstract_concept = args.concept
     image_path = args.image_path
-    max_iterations = args.max_iterations
+    max_iterations = args.iterations
+    similarity_threshold = args.similarity_threshold
+    
+    # Validiere den Schwellenwert
+    if similarity_threshold < 0 or similarity_threshold > 1:
+        logging.warning(f"Ungültiger Schwellenwert {similarity_threshold}. Setze auf Standardwert 0.0.")
+        similarity_threshold = 0.0
     
     # Überprüfen, ob das Ausgangsbild existiert
     if not os.path.exists(image_path):
@@ -232,34 +248,48 @@ def main():
     logging.info(f"Ausgangsbild: {image_path}")
     logging.info(f"Seed: {current_seed}")
     logging.info(f"Max Iterationen: {max_iterations}")
+    logging.info(f"Ähnlichkeitsschwellenwert: {similarity_threshold}")
     
     # Iterationsschleife
     for i in range(max_iterations):
         logging.info(f"Iteration {i+1}/{max_iterations} gestartet")
         current_image_path = image_paths[-1]
         
-        # 1. Bild beschreiben
-        logging.info(f"Beschreibe Bild: {current_image_path}")
-        description = describe_image_with_claude(current_image_path, args.api_key, current_seed)
+        # Bei der letzten Iteration überspringen wir die Beschreibung
+        is_last_iteration = (i == max_iterations - 1)
         
-        if not description:
-            logging.error("Fehler bei der Bildbeschreibung. Breche ab.")
-            break
-        
-        # Beschreibung speichern
-        description_file = os.path.join(timestamped_output_dir, f"description_{i+1:03d}.txt")
-        save_description(description, description_file)
-        descriptions.append(description)
-        logging.info(f"Beschreibung {i+1} gespeichert in {description_file}")
-        
-        # Prüfen, ob eine Beschreibung sich wiederholt
-        if is_description_repeated(descriptions):
-            logging.info("Eine Beschreibung hat sich wiederholt. Ende der Evolution erreicht.")
-            break
+        if not is_last_iteration:
+            # 1. Bild beschreiben
+            logging.info(f"Beschreibe Bild: {current_image_path}")
+            description = describe_image_with_claude(current_image_path, args.api_key, current_seed)
+            
+            if not description:
+                logging.error("Fehler bei der Bildbeschreibung. Breche ab.")
+                break
+            
+            # Beschreibung speichern
+            description_file = os.path.join(timestamped_output_dir, f"description_{i+1:03d}.txt")
+            save_description(description, description_file)
+            descriptions.append(description)
+            logging.info(f"Beschreibung {i+1} gespeichert in {description_file}")
+            
+            # Prüfen, ob Beschreibungen zu ähnlich sind basierend auf Levenshtein-Distanz
+            if is_description_similar(descriptions, similarity_threshold):
+                logging.info(f"Beschreibungen sind zu ähnlich (Schwellenwert: {similarity_threshold}). Ende der Evolution erreicht.")
+                break
+                
+            # Prompt für die Bildgenerierung
+            prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
+        else:
+            # Bei der letzten Iteration verwenden wir die letzte Beschreibung erneut
+            logging.info("Letzte Iteration: Erzeuge nur Bild ohne neue Beschreibung")
+            if descriptions:
+                prompt = f"{descriptions[-1]}\n\nThe image conveys a sense of {abstract_concept}."
+            else:
+                logging.error("Keine Beschreibungen vorhanden für die letzte Iteration. Breche ab.")
+                break
         
         # 2. Neues Bild aus Beschreibung generieren
-        # Füge den abstrakten Begriff zur Beschreibung hinzu
-        prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
         logging.info(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
         
         # Lade aktuelles Bild als Base64 mit Dimensionen
