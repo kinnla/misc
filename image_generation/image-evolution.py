@@ -13,14 +13,16 @@ import anthropic
 import datetime
 import logging
 
-# Bildparameter
-# width and height will be determined from input image
+# Parameter für Bildgenerierung
 num_inference_steps = 25  # Qualität und Geschwindigkeit
 cfg_scale = 5.5  # Einfluss des Prompts
-denoising_strength = 0.75
+denoising_strength = 0.7
 seed = 42
 sampler_index = "Euler a"
 negative_prompt = "blurry, distorted, deformed, asymmetrical face, extra limbs, extra eyes, bad anatomy, low quality, low resolution, missing facial features, wrong proportions, unnatural expression, poorly drawn face, poorly drawn hands, out of focus, grainy"
+
+# Parameter für Bildbeschreibung
+image_description_prompt = f"Provide a description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. The description should be concise and not exceed {max_length} words. Output like this: Futuristic Tokyo at night, neon lights reflecting in wet streets, cyberpunk aesthetic, detailed urban landscape, dramatic lighting, wide perspective."
 
 # URLs der lokalen Stable Diffusion-Instanz
 url_txt2img = "http://127.0.0.1:7860/sdapi/v1/txt2img"
@@ -137,7 +139,7 @@ def describe_image_with_claude(image_path, api_key, current_seed, max_length=50)
                         },
                         {
                             "type": "text",
-                            "text": f"Provide a detailed description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. The description should be concise and not exceed {max_length} words."
+                            "text": image_description_prompt
                         }
                     ]
                 }
@@ -278,18 +280,20 @@ def main():
             break
             
         # Prompt für die Bildgenerierung
-        prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
+        prompt = f"{description}, {abstract_concept}."
         
         # 2. Neues Bild aus Beschreibung generieren
         logging.info(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
         
-        # Lade aktuelles Bild als Base64 mit Dimensionen
+        # Lade das aktuelle Bild als Base64 mit Dimensionen
+        # Dieses Bild wurde für die Beschreibung verwendet
         image_data = load_image_as_base64(current_image_path)
         if not image_data:
             logging.error("Fehler beim Laden des Bildes. Breche ab.")
             break
         
-        # Generiere neues Bild mit den gleichen Dimensionen wie das Eingabebild
+        # Generiere neues Bild mit dem aktuellen Bild als Basis
+        # Das aktuelle Bild ist das, das für die Beschreibung verwendet wurde
         new_image_data = generate_image_via_img2img(prompt, image_data, current_seed)
         if not new_image_data:
             logging.error("Fehler bei der Bildgenerierung. Breche ab.")
