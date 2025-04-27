@@ -92,11 +92,11 @@ def main():
     parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 10)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
-    parser.add_argument('--negative_prompt', default='', help='Negative prompt for stable diffusion')
+    parser.add_argument('--negative_prompt', default='text, letters, words, writing, font, character, alphabet, signature, watermark', help='Negative prompt for stable diffusion')
     parser.add_argument('--num_inference_steps', type=int, default=30, 
                         help='Number of inference steps (default: 30)')
-    parser.add_argument('--denoising_strength', type=float, default=0.6, 
-                        help='Denoising strength (default: 0.6)')
+    parser.add_argument('--denoising_strength', type=float, default=0.5, 
+                        help='Denoising strength (default: 0.5)')
     parser.add_argument('--cfg_scale', type=float, default=5, 
                         help='CFG scale (default: 5)')
     
