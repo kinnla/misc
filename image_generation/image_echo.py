@@ -10,10 +10,10 @@ import logging
 from PIL import Image
 import requests
 
-# Parameters for image generation
-num_inference_steps = 25
-cfg_scale = 5.5
-denoising_strength = 0.7
+# Default parameters for image generation
+default_num_inference_steps = 30
+default_cfg_scale = 5
+default_denoising_strength = 0.6
 seed = 42
 sampler_index = "Euler a"
 
@@ -57,7 +57,8 @@ def load_image_as_base64(image_path):
         return None
 
 # Function for image generation via img2img
-def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed):
+def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed, 
+                         num_inference_steps, cfg_scale, denoising_strength):
     # Extract image dimensions and base64 data
     init_image = image_data["data"]
     width = image_data["width"]
@@ -99,6 +100,12 @@ def main():
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=seed, help=f'Seed for image generation (default: {seed})')
     parser.add_argument('--negative_prompt', default='', help='Negative prompt for stable diffusion')
+    parser.add_argument('--num_inference_steps', type=int, default=default_num_inference_steps, 
+                        help=f'Number of inference steps (default: {default_num_inference_steps})')
+    parser.add_argument('--denoising_strength', type=float, default=default_denoising_strength, 
+                        help=f'Denoising strength (default: {default_denoising_strength})')
+    parser.add_argument('--cfg_scale', type=float, default=default_cfg_scale, 
+                        help=f'CFG scale (default: {default_cfg_scale})')
     
     args = parser.parse_args()
     
@@ -147,6 +154,9 @@ def main():
     logging.info(f"Seed: {current_seed}")
     logging.info(f"Max iterations: {max_iterations}")
     logging.info(f"Negative prompt: {negative_prompt}")
+    logging.info(f"Num inference steps: {args.num_inference_steps}")
+    logging.info(f"Denoising strength: {args.denoising_strength}")
+    logging.info(f"CFG scale: {args.cfg_scale}")
     
     # Iteration loop
     for i in range(max_iterations):
@@ -163,7 +173,10 @@ def main():
             break
         
         # Generate new image using the current image as a base
-        new_image_data = generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed)
+        new_image_data = generate_image_via_img2img(
+            prompt, image_data, negative_prompt, current_seed,
+            args.num_inference_steps, args.cfg_scale, args.denoising_strength
+        )
         if not new_image_data:
             logging.error("Error generating image. Aborting.")
             break
