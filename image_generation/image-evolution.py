@@ -103,7 +103,7 @@ def generate_image_via_img2img(prompt, image_data, current_seed):
         return None
 
 # Funktion zur Bildbeschreibung mit Claude
-def describe_image_with_claude(image_path, api_key, current_seed):
+def describe_image_with_claude(image_path, api_key, current_seed, max_length=50):
     try:
         # Bild als Base64 laden
         with open(image_path, "rb") as img_file:
@@ -137,7 +137,7 @@ def describe_image_with_claude(image_path, api_key, current_seed):
                         },
                         {
                             "type": "text",
-                            "text": "Provide a detailed description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. Keep the description to 2-3 paragraphs maximum."
+                            "text": f"Provide a detailed description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. The description should be concise and not exceed {max_length} words."
                         }
                     ]
                 }
@@ -191,6 +191,7 @@ def main():
     parser.add_argument('--output_dir', default='evolution_output', help='Ausgabeverzeichnis für die Bilder und Beschreibungen')
     parser.add_argument('--api_key', default=os.environ.get('ANTHROPIC_API_KEY'), help='Claude API-Schlüssel (wenn nicht als Umgebungsvariable ANTHROPIC_API_KEY gesetzt)')
     parser.add_argument('--seed', type=int, default=seed, help=f'Seed für die Bildgenerierung (Standard: {seed})')
+    parser.add_argument('--max_description_length', type=int, default=50, help='Maximale Anzahl der Wörter in der Bildbeschreibung (Standard: 50)')
     
     args = parser.parse_args()
     
@@ -244,45 +245,34 @@ def main():
     logging.info(f"Seed: {current_seed}")
     logging.info(f"Max Iterationen: {max_iterations}")
     logging.info(f"Ähnlichkeitsschwellenwert: {similarity_threshold}")
+    logging.info(f"Max Beschreibungslänge: {args.max_description_length} Wörter")
     
     # Iterationsschleife
     for i in range(max_iterations):
         logging.info(f"Iteration {i+1}/{max_iterations} gestartet")
         current_image_path = image_paths[-1]
         
-        # Bei der letzten Iteration überspringen wir die Beschreibung
-        is_last_iteration = (i == max_iterations - 1)
+        # 1. Bild beschreiben
+        logging.info(f"Beschreibe Bild: {current_image_path}")
+        description = describe_image_with_claude(current_image_path, args.api_key, current_seed, args.max_description_length)
         
-        if not is_last_iteration:
-            # 1. Bild beschreiben
-            logging.info(f"Beschreibe Bild: {current_image_path}")
-            description = describe_image_with_claude(current_image_path, args.api_key, current_seed)
+        if not description:
+            logging.error("Fehler bei der Bildbeschreibung. Breche ab.")
+            break
+        
+        # Beschreibung speichern
+        description_file = os.path.join(timestamped_output_dir, f"description_{i+1:03d}.txt")
+        save_description(description, description_file)
+        descriptions.append(description)
+        logging.info(f"Beschreibung {i+1} gespeichert in {description_file}")
+        
+        # Prüfen, ob Beschreibungen zu ähnlich sind basierend auf Ähnlichkeitsverhältnis
+        if is_description_similar(descriptions, similarity_threshold):
+            logging.info(f"Beschreibungen sind zu ähnlich (Ähnlichkeitsverhältnis über Schwellenwert: {similarity_threshold}). Ende der Evolution erreicht.")
+            break
             
-            if not description:
-                logging.error("Fehler bei der Bildbeschreibung. Breche ab.")
-                break
-            
-            # Beschreibung speichern
-            description_file = os.path.join(timestamped_output_dir, f"description_{i+1:03d}.txt")
-            save_description(description, description_file)
-            descriptions.append(description)
-            logging.info(f"Beschreibung {i+1} gespeichert in {description_file}")
-            
-            # Prüfen, ob Beschreibungen zu ähnlich sind basierend auf Ähnlichkeitsverhältnis
-            if is_description_similar(descriptions, similarity_threshold):
-                logging.info(f"Beschreibungen sind zu ähnlich (Ähnlichkeitsverhältnis über Schwellenwert: {similarity_threshold}). Ende der Evolution erreicht.")
-                break
-                
-            # Prompt für die Bildgenerierung
-            prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
-        else:
-            # Bei der letzten Iteration verwenden wir die letzte Beschreibung erneut
-            logging.info("Letzte Iteration: Erzeuge nur Bild ohne neue Beschreibung")
-            if descriptions:
-                prompt = f"{descriptions[-1]}\n\nThe image conveys a sense of {abstract_concept}."
-            else:
-                logging.error("Keine Beschreibungen vorhanden für die letzte Iteration. Breche ab.")
-                break
+        # Prompt für die Bildgenerierung
+        prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
         
         # 2. Neues Bild aus Beschreibung generieren
         logging.info(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
