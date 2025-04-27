@@ -88,8 +88,8 @@ def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed
 def main():
     parser = argparse.ArgumentParser(description='Image Echo: Generate sequence of images using img2img with the same prompt')
     parser.add_argument('image_path', help='Path to the initial image')
-    parser.add_argument('--concept', default='love. high resolution, sharp focus, detailed, shot on Canon EOS R5, 85mm lens, f/1.8, natural lighting', help='Abstract concept to use as the prompt')
-    parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 10)')
+    parser.add_argument('--prompt', default='love. high resolution, sharp focus, detailed, shot on Canon EOS R5, 85mm lens, f/1.8, natural lighting', help='prompt for img2img pipeline')
+    parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 20)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
     parser.add_argument('--negative_prompt', default='text, letters, words, writing, font, character, alphabet, signature, watermark', help='Negative prompt for stable diffusion')
@@ -97,8 +97,8 @@ def main():
                         help='Number of inference steps (default: 30)')
     parser.add_argument('--denoising_strength', type=float, default=0.5, 
                         help='Denoising strength (default: 0.5)')
-    parser.add_argument('--tweak_denoise', type=float, default=0.2,
-                        help='Value to modify denoising strength by iteration (default: 0.2)')
+    parser.add_argument('--tweak_denoise', type=float, default=0.4,
+                        help='Value to modify denoising strength by iteration (default: 0.4)')
     parser.add_argument('--cfg_scale', type=float, default=5, 
                         help='CFG scale (default: 5)')
     
@@ -121,8 +121,7 @@ def main():
             logging.StreamHandler()
         ]
     )
-    concept_msg = f"concept: {args.concept}" if args.concept else "no concept provided"
-    logging.info(f"Image echo started with {concept_msg}")
+    logging.info(f"Image echo started with {args.prompt}")
     
     # Copy the original image to the output directory
     import shutil
@@ -131,11 +130,7 @@ def main():
     logging.info(f"Original image copied to {output_first_image}")
     
     # Parameters for the series
-    current_seed = args.seed
-    concept = args.concept if args.concept else ""
     image_path = output_first_image
-    max_iterations = args.iterations
-    negative_prompt = args.negative_prompt
     
     # Check if the initial image exists
     if not os.path.exists(args.image_path):
@@ -147,22 +142,19 @@ def main():
     
     # Log basic information
     logging.info(f"Initial image: {args.image_path}")
-    logging.info(f"Seed: {current_seed}")
-    logging.info(f"Max iterations: {max_iterations}")
-    logging.info(f"Negative prompt: {negative_prompt}")
+    logging.info(f"Seed: {args.seed}")
+    logging.info(f"Max iterations: {args.iterations}")
+    logging.info(f"Negative prompt: {args.negative_prompt}")
     logging.info(f"Num inference steps: {args.num_inference_steps}")
     logging.info(f"Denoising strength: {args.denoising_strength}")
     logging.info(f"Tweak denoise: {args.tweak_denoise}")
     logging.info(f"CFG scale: {args.cfg_scale}")
     
     # Iteration loop
-    for i in range(max_iterations):
-        logging.info(f"Iteration {i+1}/{max_iterations} started")
+    for i in range(args.iterations):
+        logging.info(f"Iteration {i+1}/{args.iterations} started")
         current_image_path = image_paths[-1]
-        
-        # Prompt for image generation
-        prompt = concept
-        
+                
         # Load the current image as base64 with dimensions
         image_data = load_image_as_base64(current_image_path)
         if not image_data:
@@ -175,7 +167,7 @@ def main():
         
         # Generate new image using the current image as a base
         new_image_data = generate_image_via_img2img(
-            prompt, image_data, negative_prompt, current_seed,
+            args.prompt, image_data, args.negative_prompt, args.seed,
             args.num_inference_steps, args.cfg_scale, adjusted_denoising_strength
         )
         if not new_image_data:
