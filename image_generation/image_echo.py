@@ -88,7 +88,7 @@ def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed
 def main():
     parser = argparse.ArgumentParser(description='Image Echo: Generate sequence of images using img2img with the same prompt')
     parser.add_argument('image_path', help='Path to the initial image')
-    parser.add_argument('concept', help='Abstract concept to use as the prompt')
+    parser.add_argument('--concept', help='Abstract concept to use as the prompt (optional)')
     parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 10)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
@@ -97,6 +97,8 @@ def main():
                         help='Number of inference steps (default: 30)')
     parser.add_argument('--denoising_strength', type=float, default=0.5, 
                         help='Denoising strength (default: 0.5)')
+    parser.add_argument('--tweak_denoise', type=float, default=0.2,
+                        help='Value to modify denoising strength by iteration (default: 0.2)')
     parser.add_argument('--cfg_scale', type=float, default=5, 
                         help='CFG scale (default: 5)')
     
@@ -119,7 +121,8 @@ def main():
             logging.StreamHandler()
         ]
     )
-    logging.info(f"Image echo started with concept: {args.concept}")
+    concept_msg = f"concept: {args.concept}" if args.concept else "no concept provided"
+    logging.info(f"Image echo started with {concept_msg}")
     
     # Copy the original image to the output directory
     import shutil
@@ -129,7 +132,7 @@ def main():
     
     # Parameters for the series
     current_seed = args.seed
-    concept = args.concept
+    concept = args.concept if args.concept else ""
     image_path = output_first_image
     max_iterations = args.iterations
     negative_prompt = args.negative_prompt
@@ -149,6 +152,7 @@ def main():
     logging.info(f"Negative prompt: {negative_prompt}")
     logging.info(f"Num inference steps: {args.num_inference_steps}")
     logging.info(f"Denoising strength: {args.denoising_strength}")
+    logging.info(f"Tweak denoise: {args.tweak_denoise}")
     logging.info(f"CFG scale: {args.cfg_scale}")
     
     # Iteration loop
@@ -165,10 +169,14 @@ def main():
             logging.error("Error loading the image. Aborting.")
             break
         
+        # Calculate adjusted denoising strength based on iteration
+        adjusted_denoising_strength = args.denoising_strength - (args.tweak_denoise / (i+1))
+        logging.info(f"Adjusted denoising strength for iteration {i+1}: {adjusted_denoising_strength}")
+        
         # Generate new image using the current image as a base
         new_image_data = generate_image_via_img2img(
             prompt, image_data, negative_prompt, current_seed,
-            args.num_inference_steps, args.cfg_scale, args.denoising_strength
+            args.num_inference_steps, args.cfg_scale, adjusted_denoising_strength
         )
         if not new_image_data:
             logging.error("Error generating image. Aborting.")
