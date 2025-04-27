@@ -22,7 +22,7 @@ sampler_index = "Euler a"
 negative_prompt = "blurry, distorted, deformed, asymmetrical face, extra limbs, extra eyes, bad anatomy, low quality, low resolution, missing facial features, wrong proportions, unnatural expression, poorly drawn face, poorly drawn hands, out of focus, grainy"
 
 # Parameter für Bildbeschreibung
-image_description_prompt = f"Provide a description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. The description should be concise and not exceed {max_length} words. Output like this: Futuristic Tokyo at night, neon lights reflecting in wet streets, cyberpunk aesthetic, detailed urban landscape, dramatic lighting, wide perspective."
+image_description_prompt = "Provide a description of this image that could be used to recreate it. Focus on capturing all important visual elements, including subjects, style, composition, colors, lighting, and atmosphere. Be specific, thorough, and objective in your description. The description should be concise and not exceed {} words. Output like this: Futuristic Tokyo at night, neon lights reflecting in wet streets, cyberpunk aesthetic, detailed urban landscape, dramatic lighting, wide perspective."
 
 # URLs der lokalen Stable Diffusion-Instanz
 url_txt2img = "http://127.0.0.1:7860/sdapi/v1/txt2img"
@@ -105,7 +105,7 @@ def generate_image_via_img2img(prompt, image_data, current_seed):
         return None
 
 # Funktion zur Bildbeschreibung mit Claude
-def describe_image_with_claude(image_path, api_key, current_seed, max_length=50):
+def describe_image_with_claude(image_path, api_key, current_seed, max_length=30):
     try:
         # Bild als Base64 laden
         with open(image_path, "rb") as img_file:
@@ -139,7 +139,7 @@ def describe_image_with_claude(image_path, api_key, current_seed, max_length=50)
                         },
                         {
                             "type": "text",
-                            "text": image_description_prompt
+                            "text": image_description_prompt.format(max_length)
                         }
                     ]
                 }
