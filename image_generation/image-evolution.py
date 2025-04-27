@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
+# Updated to include logging and timestamped output directories (2025-04-27)
 
 import base64
 import argparse
@@ -9,6 +10,8 @@ import hashlib
 from PIL import Image
 import io
 import anthropic
+import datetime
+import logging
 
 # Bildparameter
 width = 620  # Breite des Bildes (150 dpi)
@@ -40,10 +43,10 @@ def save_base64_image(image_data, output_file):
         image_bytes = base64.b64decode(image_base64)
         with open(output_file, "wb") as image_file:
             image_file.write(image_bytes)
-        print(f"Bild erfolgreich gespeichert: {output_file}")
+        logging.info(f"Bild erfolgreich gespeichert: {output_file}")
         return True
     except Exception as e:
-        print(f"Fehler beim Speichern des Bildes: {e}")
+        logging.error(f"Fehler beim Speichern des Bildes: {e}")
         return False
 
 # Funktion zum Laden eines Bildes und Konvertierung in Base64
@@ -54,7 +57,7 @@ def load_image_as_base64(image_path):
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
         return "data:image/png;base64," + image_base64
     except Exception as e:
-        print(f"Fehler beim Laden des Bildes: {e}")
+        logging.error(f"Fehler beim Laden des Bildes: {e}")
         return None
 
 # Funktion zur Bildgenerierung über Bild-zu-Bild
@@ -74,17 +77,19 @@ def generate_image_via_img2img(prompt, init_image, current_seed):
         "sd_model_checkpoint": sd_model_checkpoint,
         "negative_prompt": negative_prompt
     }
+    logging.info(f"Sende Bild-zu-Bild-Anfrage mit Seed {current_seed}")
     response = requests.post(url_img2img, json=payload)
     try:
         response_data = response.json()
     except ValueError:
-        print("Fehler beim Parsen der Antwort:", response.text)
+        logging.error(f"Fehler beim Parsen der Antwort: {response.text}")
         return None
 
     if response.status_code == 200 and "images" in response_data:
+        logging.info("Bild-zu-Bild-Anfrage erfolgreich")
         return response_data["images"][0]
     else:
-        print("Fehler bei der Bild-zu-Bild-Anfrage:", response.text)
+        logging.error(f"Fehler bei der Bild-zu-Bild-Anfrage: {response.text}")
         return None
 
 # Funktion zur Bildbeschreibung mit Claude
@@ -103,6 +108,7 @@ def describe_image_with_claude(image_path, api_key, current_seed):
         # Anthropic Client erstellen
         client = anthropic.Anthropic(api_key=api_key)
         
+        logging.info(f"Sende Anfrage an Claude API mit Modell {claude_model}")
         # Anfrage an Claude senden
         message = client.messages.create(
             model=claude_model,
@@ -131,10 +137,11 @@ def describe_image_with_claude(image_path, api_key, current_seed):
         
         # Beschreibung aus Claude's Antwort extrahieren
         description = message.content[0].text
+        logging.info("Beschreibung von Claude erhalten")
         return description
     
     except Exception as e:
-        print(f"Fehler bei der Bildbeschreibung mit Claude: {e}")
+        logging.error(f"Fehler bei der Bildbeschreibung mit Claude: {e}")
         return None
 
 # Funktion zum Speichern der Beschreibungen
@@ -142,10 +149,10 @@ def save_description(description, output_file):
     try:
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(description)
-        print(f"Beschreibung gespeichert: {output_file}")
+        logging.info(f"Beschreibung gespeichert: {output_file}")
         return True
     except Exception as e:
-        print(f"Fehler beim Speichern der Beschreibung: {e}")
+        logging.error(f"Fehler beim Speichern der Beschreibung: {e}")
         return False
 
 # Funktion zum Prüfen auf Wiederholung
@@ -177,8 +184,24 @@ def main():
         print("Fehler: Claude API-Schlüssel fehlt. Bitte über --api_key oder Umgebungsvariable ANTHROPIC_API_KEY angeben.")
         return
     
+    # Zeitstempel für das Ausgabeverzeichnis erstellen
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H%M")
+    timestamped_output_dir = f"{timestamp}-{args.output_dir}"
+    
     # Ausgabeverzeichnis erstellen, falls es nicht existiert
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(timestamped_output_dir, exist_ok=True)
+    
+    # Logging einrichten
+    log_file = os.path.join(timestamped_output_dir, "evolution.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    logging.info(f"Bildevolution gestartet mit Konzept: {args.concept}")
     
     # Parameter für die Serie
     current_seed = args.seed
@@ -188,67 +211,74 @@ def main():
     
     # Überprüfen, ob das Ausgangsbild existiert
     if not os.path.exists(image_path):
-        print(f"Fehler: Ausgangsbild {image_path} nicht gefunden.")
+        logging.error(f"Ausgangsbild {image_path} nicht gefunden.")
         return
     
     # Listen für Beschreibungen und Bildpfade
     descriptions = []
     image_paths = [image_path]
     
+    # Grundlegende Informationen loggen
+    logging.info(f"Ausgangsbild: {image_path}")
+    logging.info(f"Seed: {current_seed}")
+    logging.info(f"Max Iterationen: {max_iterations}")
+    
     # Iterationsschleife
     for i in range(max_iterations):
-        print(f"\nIteration {i+1}/{max_iterations}")
+        logging.info(f"Iteration {i+1}/{max_iterations} gestartet")
         current_image_path = image_paths[-1]
         
         # 1. Bild beschreiben
-        print(f"Beschreibe Bild: {current_image_path}")
+        logging.info(f"Beschreibe Bild: {current_image_path}")
         description = describe_image_with_claude(current_image_path, args.api_key, current_seed)
         
         if not description:
-            print("Fehler bei der Bildbeschreibung. Breche ab.")
+            logging.error("Fehler bei der Bildbeschreibung. Breche ab.")
             break
         
         # Beschreibung speichern
-        description_file = os.path.join(args.output_dir, f"description_{i+1:03d}.txt")
+        description_file = os.path.join(timestamped_output_dir, f"description_{i+1:03d}.txt")
         save_description(description, description_file)
         descriptions.append(description)
+        logging.info(f"Beschreibung {i+1} gespeichert in {description_file}")
         
         # Prüfen, ob eine Beschreibung sich wiederholt
         if is_description_repeated(descriptions):
-            print("Eine Beschreibung hat sich wiederholt. Ende der Evolution erreicht.")
+            logging.info("Eine Beschreibung hat sich wiederholt. Ende der Evolution erreicht.")
             break
         
         # 2. Neues Bild aus Beschreibung generieren
         # Füge den abstrakten Begriff zur Beschreibung hinzu
         prompt = f"{description}\n\nThe image conveys a sense of {abstract_concept}."
-        print(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
+        logging.info(f"Generiere neues Bild aus Beschreibung mit Konzept: {abstract_concept}")
         
         # Lade aktuelles Bild als Base64
         init_image = load_image_as_base64(current_image_path)
         if not init_image:
-            print("Fehler beim Laden des Bildes. Breche ab.")
+            logging.error("Fehler beim Laden des Bildes. Breche ab.")
             break
         
         # Generiere neues Bild
         new_image_data = generate_image_via_img2img(prompt, init_image, current_seed)
         if not new_image_data:
-            print("Fehler bei der Bildgenerierung. Breche ab.")
+            logging.error("Fehler bei der Bildgenerierung. Breche ab.")
             break
         
         # Speichere das neue Bild
-        new_image_path = os.path.join(args.output_dir, f"evolution_{i+2:03d}.png")
+        new_image_path = os.path.join(timestamped_output_dir, f"evolution_{i+2:03d}.png")
         if save_base64_image(new_image_data, new_image_path):
             image_paths.append(new_image_path)
+            logging.info(f"Bild {i+2} gespeichert in {new_image_path}")
         else:
-            print("Fehler beim Speichern des Bildes. Breche ab.")
+            logging.error("Fehler beim Speichern des Bildes. Breche ab.")
             break
     
     # Zusammenfassung der Evolution
-    print("\nBildevolution abgeschlossen")
-    print(f"Anzahl der Iterationen: {len(descriptions)}")
-    print(f"Ausgangsbild: {image_paths[0]}")
-    print(f"Endbild: {image_paths[-1]}")
-    print(f"Alle Ergebnisse wurden im Verzeichnis {args.output_dir} gespeichert.")
+    logging.info("\nBildevolution abgeschlossen")
+    logging.info(f"Anzahl der Iterationen: {len(descriptions)}")
+    logging.info(f"Ausgangsbild: {image_paths[0]}")
+    logging.info(f"Endbild: {image_paths[-1]}")
+    logging.info(f"Alle Ergebnisse wurden im Verzeichnis {timestamped_output_dir} gespeichert.")
 
 if __name__ == "__main__":
     main()
