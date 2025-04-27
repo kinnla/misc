@@ -88,19 +88,19 @@ def generate_image_via_img2img(prompt, image_data, negative_prompt, current_seed
 def main():
     parser = argparse.ArgumentParser(description='Image Echo: Generate sequence of images using img2img with the same prompt')
     parser.add_argument('image_path', help='Path to the initial image')
-    parser.add_argument('--prompt', default='love. high resolution, sharp focus, detailed, shot on Canon EOS R5, 85mm lens, f/1.8, natural lighting', help='prompt for img2img pipeline')
-    parser.add_argument('--iterations', type=int, default=10, help='Number of iterations (default: 20)')
+    parser.add_argument('--prompt', default='love love love. blue sky, high resolution, sharp focus, detailed, shot on Canon EOS R5, 85mm lens, f/1.8, natural lighting', help='prompt for img2img pipeline')
+    parser.add_argument('--iterations', type=int, default=20, help='Number of iterations (default: 20)')
     parser.add_argument('--output_dir', default='echo_output', help='Output directory for images')
     parser.add_argument('--seed', type=int, default=-1, help='Seed for image generation (default: 42)')
     parser.add_argument('--negative_prompt', default='text, letters, words, writing, font, character, alphabet, signature, watermark', help='Negative prompt for stable diffusion')
     parser.add_argument('--num_inference_steps', type=int, default=30, 
-                        help='Number of inference steps (default: 30)')
-    parser.add_argument('--denoising_strength', type=float, default=0.5, 
-                        help='Denoising strength (default: 0.5)')
-    parser.add_argument('--tweak_denoise', type=float, default=0.4,
-                        help='Value to modify denoising strength by iteration (default: 0.4)')
+                        help='Number of inference steps')
+    parser.add_argument('--denoising_strength', type=float, default=0.4, 
+                        help='Denoising strength')
+    parser.add_argument('--tweak_denoise', type=float, default=0.5,
+                        help='Value to modify denoising strength by iteration')
     parser.add_argument('--cfg_scale', type=float, default=5, 
-                        help='CFG scale (default: 5)')
+                        help='CFG scale')
     
     args = parser.parse_args()
     
