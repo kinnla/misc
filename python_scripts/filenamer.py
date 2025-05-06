@@ -3,7 +3,7 @@
 
 """
 This script reads the contents of a PDF and then renames it with an adequate name. 
-We use Llama 3.1 as LLM via Ollama.
+We use mistral-small3.1 via Ollama.
 
 Usage:
 ./filenamer.py file.pdf
@@ -73,7 +73,7 @@ def get_new_filename(prompt, content):
             content = encoded_content[:context_window].decode('utf-8', errors='ignore')
         
         formatted_prompt = prompt.format(pdf=content)  # Formatting the hardcoded prompt
-        response = client.generate(prompt=formatted_prompt, model="llama3.1", options={'temperature': 0})
+        response = client.generate(prompt=formatted_prompt, model="mistral-small3.1", options={'temperature': 0})
 
         # Extract the new filename from the 'response' key
         if response and 'response' in response:
@@ -193,7 +193,7 @@ def get_all_pdfs(directory):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Rename PDF files based on their content using Llama 3.1 model.")
+    parser = argparse.ArgumentParser(description="Rename PDF files based on their content using mistral-small3.1.")
     parser.add_argument("paths", nargs='+', help="The paths to the PDF files or folders containing PDF files to be renamed")
     args = parser.parse_args()
 
