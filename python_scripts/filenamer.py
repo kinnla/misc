@@ -27,8 +27,21 @@ Also check if there is a date mentioned in the document.
 <<<
 Now we will construct a new name for the document, according to the following format:
 'YYYY-MM-DD_COMPANY-SUBJECT.pdf'
-Please take care that there are no blanks in the filename! You know why ;)
-If the doc is in english, use the english terms. Wenn das Dokument auf Deutsch ist, dann verwende Deutsche Begriffe.
+
+IMPORTANT FILENAME REQUIREMENTS:
+1. Use hyphens (-) between words in company names and subjects
+2. Use underscores (_) between the date and company, and if needed for clarity
+3. Do NOT include any spaces in the filename
+4. Avoid special characters except for hyphens and underscores
+5. Use dots (.) only for abbreviations, not before the .pdf extension
+6. Keep company names concise, abbreviate if very long
+
+Examples:
+- 2025-04-15_Microsoft-QuarterlyReport.pdf
+- 2025-03-22_Amazon-OrderConfirmation.pdf
+- 2025-05-01_EDP_SA-Dividends.pdf (note: no dots before .pdf)
+
+If the doc is in English, use English terms. Wenn das Dokument auf Deutsch ist, dann verwende Deutsche Begriffe.
 
 As a reply to this prompt, please be short and concise, and only reply with the file name. Thanks in advance!
 """
@@ -75,11 +88,53 @@ def get_new_filename(prompt, content):
         return None
 
 def validate_filename(filename):
-    # Check if the filename only includes alphanumerical characters, hyphens, or underscores
-    # and ends with .pdf
-    if re.match(r'^[\w-]+\.pdf$', filename):
+    # Check if the filename only includes alphanumerical characters, hyphens, underscores
+    # dots are allowed within the name but the file must end with .pdf
+    if re.match(r'^[\w\.-]+\.pdf$', filename):
         return True
     return False
+
+def clean_filename(filename):
+    """
+    Cleans up invalid filenames, particularly handling dots before the .pdf extension.
+    Returns the cleaned filename.
+    """
+    # If filename doesn't end with .pdf, add it
+    if not filename.lower().endswith('.pdf'):
+        filename += '.pdf'
+    
+    # Handle case where there might be dots before the extension
+    # Ensure we keep the dots in dates and other valid uses, but avoid dots right before .pdf
+    # This handles cases like "Company.Name-Subject.pdf" -> "Company.Name-Subject.pdf"
+    # But fixes "Company-Subject..pdf" -> "Company-Subject.pdf"
+    clean_name = re.sub(r'\.+\.pdf$', '.pdf', filename)
+    
+    # Replace spaces with underscores
+    clean_name = clean_name.replace(' ', '_')
+    
+    return clean_name$', filename):
+        return True
+    return False
+    
+def clean_filename(filename):
+    """
+    Cleans up invalid filenames, particularly handling dots before the .pdf extension.
+    Returns the cleaned filename.
+    """
+    # If filename doesn't end with .pdf, add it
+    if not filename.lower().endswith('.pdf'):
+        filename += '.pdf'
+    
+    # Handle case where there might be dots before the extension
+    # Ensure we keep the dots in dates and other valid uses, but avoid dots right before .pdf
+    # This handles cases like "Company.Name-Subject.pdf" -> "Company.Name-Subject.pdf"
+    # But fixes "Company-Subject..pdf" -> "Company-Subject.pdf"
+    clean_name = re.sub(r'\.+\.pdf$', '.pdf', filename)
+    
+    # Replace spaces with underscores
+    clean_name = clean_name.replace(' ', '_')
+    
+    return clean_name
 
 def generate_unique_filename(directory, filename):
     base, ext = os.path.splitext(filename)
@@ -96,8 +151,16 @@ def rename_file(original_path, new_name):
     if not new_name.endswith(".pdf"):
         new_name += ".pdf"
 
+    # First clean the filename to handle any invalid characters
+    cleaned_name = clean_filename(new_name)
+    
+    # Still validate, but log if we had to clean it
+    if cleaned_name != new_name:
+        print(f"Cleaned up filename: {new_name} -> {cleaned_name}")
+        new_name = cleaned_name
+    
     if not validate_filename(new_name):
-        print(f"Invalid filename generated: {new_name}")
+        print(f"Invalid filename generated even after cleaning: {new_name}")
         return
     
     directory = os.path.dirname(original_path)
