@@ -3,7 +3,7 @@
 
 """
 This script reads the contents of a PDF and then renames it with an adequate name. 
-We use mistral-small3.1 via Ollama.
+We use llama3.1 via Ollama.
 
 Usage:
 ./filenamer.py file.pdf
@@ -73,7 +73,7 @@ def get_new_filename(prompt, content):
             content = encoded_content[:context_window].decode('utf-8', errors='ignore')
         
         formatted_prompt = prompt.format(pdf=content)  # Formatting the hardcoded prompt
-        response = client.generate(prompt=formatted_prompt, model="mistral-small3.1", options={'temperature': 0})
+        response = client.generate(prompt=formatted_prompt, model="llama3.1", options={'temperature': 0})
 
         # Extract the new filename from the 'response' key
         if response and 'response' in response:
@@ -94,28 +94,6 @@ def validate_filename(filename):
         return True
     return False
 
-def clean_filename(filename):
-    """
-    Cleans up invalid filenames, particularly handling dots before the .pdf extension.
-    Returns the cleaned filename.
-    """
-    # If filename doesn't end with .pdf, add it
-    if not filename.lower().endswith('.pdf'):
-        filename += '.pdf'
-    
-    # Handle case where there might be dots before the extension
-    # Ensure we keep the dots in dates and other valid uses, but avoid dots right before .pdf
-    # This handles cases like "Company.Name-Subject.pdf" -> "Company.Name-Subject.pdf"
-    # But fixes "Company-Subject..pdf" -> "Company-Subject.pdf"
-    clean_name = re.sub(r'\.+\.pdf$', '.pdf', filename)
-    
-    # Replace spaces with underscores
-    clean_name = clean_name.replace(' ', '_')
-    
-    return clean_name$', filename):
-        return True
-    return False
-    
 def clean_filename(filename):
     """
     Cleans up invalid filenames, particularly handling dots before the .pdf extension.
@@ -193,7 +171,7 @@ def get_all_pdfs(directory):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Rename PDF files based on their content using mistral-small3.1.")
+    parser = argparse.ArgumentParser(description="Rename PDF files based on their content using llama3.1.")
     parser.add_argument("paths", nargs='+', help="The paths to the PDF files or folders containing PDF files to be renamed")
     args = parser.parse_args()
 
