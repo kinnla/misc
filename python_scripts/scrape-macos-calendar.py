@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from Foundation import NSDate, NSCalendar
 from EventKit import (EKEventStore, EKEntityTypeEvent,
                     EKSpanThisEvent)
