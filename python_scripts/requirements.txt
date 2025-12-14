@@ -1,0 +1,27 @@
+# Requirements for python_scripts
+
+# gifmaker.py
+imageio
+
+# pdf_ocr.py
+PyPDF2
+pdf2image
+pytesseract
+pillow
+
+# text-enhancer.py, whisper.py
+openai
+
+# word-by-word-coauthor.py
+requests
+
+# gen_pgp.py
+python-gnupg
+
+# scrape-macos-calendar.py (macOS only)
+pyobjc-framework-EventKit
+pyobjc-framework-Cocoa
+
+# filenamer.py
+PyMuPDF
+ollama
