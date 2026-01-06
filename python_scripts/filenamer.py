@@ -54,20 +54,20 @@ IMPORTANT FILENAME REQUIREMENTS:
 6. Keep company names concise, abbreviate if very long
 7. If no date is found, omit the date prefix entirely
 
-Examples with dates:
-- 2025-04-15_Microsoft-QuarterlyReport.pdf
-- 2025-03-22_Amazon-OrderConfirmation.pdf
-- 2025-05-01_EDP_SA-Dividends.pdf
-
-Examples without dates:
-- Microsoft-ProductBrochure.pdf
-- Amazon-UserManual.pdf
-- EDP_SA-GeneralInformation.pdf
+{examples}
 
 If the doc is in English, use English terms. Wenn das Dokument auf Deutsch ist, dann verwende Deutsche Begriffe.
 
 As a reply to this prompt, please be short and concise, and only reply with the file name. Thanks in advance!
-"""
+""",
+    'example_filenames': [
+        "2025-04-15_Microsoft-QuarterlyReport.pdf",
+        "2025-03-22_Amazon-OrderConfirmation.pdf",
+        "2025-05-01_EDP_SA-Dividends.pdf",
+        "Microsoft-ProductBrochure.pdf",
+        "Amazon-UserManual.pdf",
+        "EDP_SA-GeneralInformation.pdf"
+    ]
 }
 
 def log(message):
@@ -126,7 +126,24 @@ def get_new_filename(prompt, content, config):
             log(f"File content exceeds context length: {len(encoded_content)}. Truncating to {max_chars} characters.")
             content = encoded_content[:max_chars].decode('utf-8', errors='ignore')
 
-        formatted_prompt = prompt.format(pdf=content)
+        # Format examples from config
+        example_filenames = config.get('example_filenames', [])
+        if example_filenames:
+            examples_with_dates = [ex for ex in example_filenames if '_' in ex and ex[0].isdigit()]
+            examples_without_dates = [ex for ex in example_filenames if not ('_' in ex and ex[0].isdigit())]
+
+            examples_text = ""
+            if examples_with_dates:
+                examples_text += "Examples with dates:\n"
+                examples_text += "\n".join(f"- {ex}" for ex in examples_with_dates)
+                examples_text += "\n\n"
+            if examples_without_dates:
+                examples_text += "Examples without dates:\n"
+                examples_text += "\n".join(f"- {ex}" for ex in examples_without_dates)
+        else:
+            examples_text = ""
+
+        formatted_prompt = prompt.format(pdf=content, examples=examples_text)
         response = client.generate(
             prompt=formatted_prompt,
             model=config['model'],
@@ -186,7 +203,12 @@ def generate_unique_filename(directory, filename, config):
             break
     return unique_filename
 
-def rename_file(original_path, new_name, config):
+def prepare_rename_operation(original_path, new_name, config):
+    """
+    Prepare a rename operation without actually renaming the file.
+    Returns a dict with original_path, new_name (cleaned and validated), and directory.
+    Returns None if the filename is invalid.
+    """
     if not new_name.endswith(".pdf"):
         new_name += ".pdf"
 
@@ -200,26 +222,153 @@ def rename_file(original_path, new_name, config):
 
     if not validate_filename(new_name):
         print(f"Invalid filename generated even after cleaning: {new_name}")
-        return
+        return None
 
     directory = os.path.dirname(original_path)
-    unique_name = generate_unique_filename(directory, new_name, config)
-    new_path = os.path.join(directory, unique_name)
+    current_filename = os.path.basename(original_path)
+
+    return {
+        'original_path': original_path,
+        'current_filename': current_filename,
+        'new_name': new_name,
+        'directory': directory
+    }
+
+def execute_rename(rename_op, config):
+    """
+    Execute a single rename operation with duplicate checking.
+    Returns True if successful, False otherwise.
+    """
+    original_path = rename_op['original_path']
+    new_name = rename_op['final_name']
+    directory = rename_op['directory']
+    new_path = os.path.join(directory, new_name)
+
+    # Check if the file already has the correct name
+    if os.path.basename(original_path) == new_name:
+        print(f"already correct: {new_name}")
+        log(f"File already has correct name: {new_name}")
+        return True
+
+    # Try to rename, handling potential duplicates from other files in directory
     try:
+        # Check if target exists (could be another file that wasn't in our batch)
+        if os.path.exists(new_path):
+            # Generate a unique name
+            unique_name = generate_unique_filename(directory, new_name, config)
+            new_path = os.path.join(directory, unique_name)
+            log(f"Target exists, using unique name: {unique_name}")
+
         os.rename(original_path, new_path)
-        print(f"File renamed to: {new_path}")
+        print(f"{os.path.basename(original_path)} -> {os.path.basename(new_path)}")
+        return True
+    except FileExistsError:
+        # Race condition - file was created between our check and rename
+        unique_name = generate_unique_filename(directory, new_name, config)
+        new_path = os.path.join(directory, unique_name)
+        try:
+            os.rename(original_path, new_path)
+            print(f"{os.path.basename(original_path)} -> {os.path.basename(new_path)}")
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
     except Exception as e:
-        print(f"An error occurred while renaming the file: {e}")
+        print(f"Error: {e}")
+        return False
 
 def process_files(file_paths, config):
+    """
+    Process all files in two phases:
+    1. Generate all new filenames
+    2. Check for duplicates and rename files
+    """
     prompt = config['prompt']
+    rename_operations = []
+
+    # Phase 1: Generate all new filenames
+    total_files = len([f for f in file_paths if f.lower().endswith(".pdf")])
+    print(f"Processing {total_files} PDF file(s)...")
+    log("Phase 1: Generating new filenames for all files...")
+
+    processed_count = 0
     for file_path in file_paths:
         if file_path.lower().endswith(".pdf"):
+            processed_count += 1
+            print(f"Analyzing file {processed_count}/{total_files}: {os.path.basename(file_path)}")
             content = read_pdf(file_path)
             if content:
                 new_name = get_new_filename(prompt, content, config)
                 if new_name:
-                    rename_file(file_path, new_name, config)
+                    rename_op = prepare_rename_operation(file_path, new_name, config)
+                    if rename_op:
+                        rename_operations.append(rename_op)
+
+    if not rename_operations:
+        log("No rename operations to perform")
+        return
+
+    # Phase 2: Check for duplicates in the planned new names and resolve them
+    log("Phase 2: Checking for duplicate filenames in batch...")
+    name_counts = {}
+    for op in rename_operations:
+        # Group by directory to handle duplicates per directory
+        dir_key = op['directory']
+        if dir_key not in name_counts:
+            name_counts[dir_key] = {}
+
+        new_name = op['new_name']
+        if new_name not in name_counts[dir_key]:
+            name_counts[dir_key][new_name] = []
+        name_counts[dir_key][new_name].append(op)
+
+    # Assign final names, adding indices where needed
+    for dir_key, names in name_counts.items():
+        for new_name, ops in names.items():
+            if len(ops) == 1:
+                # No duplicates, check if current filename matches
+                op = ops[0]
+                if op['current_filename'] == new_name:
+                    # File already has correct name
+                    op['final_name'] = new_name
+                else:
+                    # Check if a different file in the directory already has this name
+                    target_path = os.path.join(dir_key, new_name)
+                    if os.path.exists(target_path):
+                        # A file exists with this name (not in our batch)
+                        base, ext = os.path.splitext(new_name)
+                        op['final_name'] = f"{base}_1{ext}"
+                        log(f"File exists in directory, adding index: {new_name} -> {op['final_name']}")
+                    else:
+                        op['final_name'] = new_name
+            else:
+                # Multiple files want the same name - assign indices
+                log(f"Found {len(ops)} files that want the name '{new_name}'")
+                for idx, op in enumerate(ops):
+                    if idx == 0 and op['current_filename'] == new_name:
+                        # First one already has the correct name
+                        op['final_name'] = new_name
+                    elif idx == 0:
+                        # First one gets the base name if not already taken
+                        target_path = os.path.join(dir_key, new_name)
+                        if os.path.exists(target_path) and os.path.basename(op['original_path']) != new_name:
+                            base, ext = os.path.splitext(new_name)
+                            op['final_name'] = f"{base}_1{ext}"
+                        else:
+                            op['final_name'] = new_name
+                    else:
+                        # Subsequent ones get indexed names
+                        base, ext = os.path.splitext(new_name)
+                        op['final_name'] = f"{base}_{idx}{ext}"
+                        log(f"Duplicate resolved: {new_name} -> {op['final_name']}")
+
+    # Phase 3: Execute all renames
+    log("Phase 3: Executing rename operations...")
+    total_renames = len(rename_operations)
+    print(f"\nRenaming files...")
+    for idx, op in enumerate(rename_operations, 1):
+        print(f"Renaming {idx}/{total_renames}: ", end="")
+        execute_rename(op, config)
 
 def get_all_pdfs(directory):
     pdf_files = []

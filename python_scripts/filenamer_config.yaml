@@ -1,6 +1,7 @@
 # Filenamer Configuration File
 
 # LLM Settings
+#model: "mistral-nemo"
 model: "llama3.1"
 temperature: 0
 max_characters: 128000
@@ -35,27 +36,22 @@ prompt: |
   5. Use dots (.) only for abbreviations, not before the .pdf extension
   6. Keep company names concise, abbreviate if very long
   7. If no date is found, omit the date prefix entirely
+  8. Avoid ALL-CAPS-NAMES except for acronyms
 
-  Examples with dates:
-  - 2025-04-15_Microsoft-QuarterlyReport.pdf
-  - 2025-03-22_Amazon-OrderConfirmation.pdf
-  - 2025-05-01_EDP_SA-Dividends.pdf
-
-  Examples without dates:
-  - Microsoft-ProductBrochure.pdf
-  - Amazon-UserManual.pdf
-  - EDP_SA-GeneralInformation.pdf
+  {examples}
 
   If the doc is in English, use English terms. Wenn das Dokument auf Deutsch ist, dann verwende Deutsche Begriffe.
 
-  As a reply to this prompt, please be short and concise, and only reply with the file name. Thanks in advance!
+  As a reply to this prompt, please be short and concise, and only reply with the file name.
 
 # Example filenames for reference
 example_filenames:
-  - "2025-04-15_Microsoft-QuarterlyReport.pdf"
-  - "2025-03-22_Amazon-OrderConfirmation.pdf"
-  - "2025-05-01_EDP_SA-Dividends.pdf"
-  - "Microsoft-ProductBrochure.pdf"
-  - "Amazon-UserManual.pdf"
-  - "2024-12-01_Deutsche-Bank-Kontoauszug.pdf"
-  - "Telekom-Rechnung.pdf"
+  - "2020-02-28_GLS-Kontoauszug.pdf"
+  - "2025-03-03_degiro-Kauf-EQQQ-9.pdf"
+  - "2024-07-29_TradeRepublic_Ueberweisungsbestaetigung.pdf"
+  - "2018-04-18_Protokoll-Eigentümerversammlung.pdf"
+  - "2025-12-30_Teilnahmbescheinigung-Mongolei.pdf"
+  - "2025-09-21_Beitrittserklärung-SK-Wedding.pdf"
+  - "2025-01-07_Vodafone-Kabel-Rechnung-Januar.pdf"
+  - "2025-12-31_DKB-Giro-Kontoauszug.pdf"
+  - "2026-01-01_TradeRepublic-Abrechnung-Saveback.pdf"
