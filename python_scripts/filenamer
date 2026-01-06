@@ -1,0 +1,22 @@
+#!/bin/bash
+# Wrapper script to run filenamer.py with uv
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Convert all arguments to absolute paths
+ARGS=()
+for arg in "$@"; do
+    if [[ -e "$arg" ]]; then
+        # If the argument is an existing file or directory, convert to absolute path
+        ARGS+=("$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")")
+    elif [[ "$arg" == "." ]]; then
+        # Special case for current directory
+        ARGS+=("$(pwd)")
+    else
+        # Keep other arguments as-is
+        ARGS+=("$arg")
+    fi
+done
+
+cd "$SCRIPT_DIR"
+exec uv run python filenamer.py "${ARGS[@]}"

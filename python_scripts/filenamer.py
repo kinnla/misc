@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
 # coding: utf-8
 
 """
-This script reads the contents of a PDF and then renames it with an adequate name. 
+This script reads the contents of a PDF and then renames it with an adequate name.
 We use llama3.1 via Ollama.
 
 Usage:
-./filenamer.py file.pdf
-./filenamer.py directory
+filenamer file.pdf
+filenamer directory
 """
 
 import fitz  # PyMuPDF
