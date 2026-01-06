@@ -25,3 +25,4 @@ pyobjc-framework-Cocoa
 # filenamer.py
 PyMuPDF
 ollama
+PyYAML

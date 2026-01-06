@@ -1,0 +1,61 @@
+# Filenamer Configuration File
+
+# LLM Settings
+model: "llama3.1"
+temperature: 0
+max_characters: 128000
+
+# File Processing Settings
+duplicate_index_limit: 99
+
+# Prompt Template
+prompt: |
+  The following is the contents of a PDF document. Please read it and find:
+  - the company name
+  - the subject (or "Betreff")
+  - the date (if mentioned in the document)
+
+  >>>
+  {pdf}
+  <<<
+
+  Now we will construct a new name for the document, according to the following format:
+
+  IF A DATE IS FOUND:
+  'YYYY-MM-DD_COMPANY-SUBJECT.pdf'
+
+  IF NO DATE IS FOUND:
+  'COMPANY-SUBJECT.pdf'
+
+  IMPORTANT FILENAME REQUIREMENTS:
+  1. Use hyphens (-) between words in company names and subjects
+  2. Use underscores (_) between the date and company, and if needed for clarity
+  3. Do NOT include any spaces in the filename
+  4. Avoid special characters except for hyphens and underscores
+  5. Use dots (.) only for abbreviations, not before the .pdf extension
+  6. Keep company names concise, abbreviate if very long
+  7. If no date is found, omit the date prefix entirely
+
+  Examples with dates:
+  - 2025-04-15_Microsoft-QuarterlyReport.pdf
+  - 2025-03-22_Amazon-OrderConfirmation.pdf
+  - 2025-05-01_EDP_SA-Dividends.pdf
+
+  Examples without dates:
+  - Microsoft-ProductBrochure.pdf
+  - Amazon-UserManual.pdf
+  - EDP_SA-GeneralInformation.pdf
+
+  If the doc is in English, use English terms. Wenn das Dokument auf Deutsch ist, dann verwende Deutsche Begriffe.
+
+  As a reply to this prompt, please be short and concise, and only reply with the file name. Thanks in advance!
+
+# Example filenames for reference
+example_filenames:
+  - "2025-04-15_Microsoft-QuarterlyReport.pdf"
+  - "2025-03-22_Amazon-OrderConfirmation.pdf"
+  - "2025-05-01_EDP_SA-Dividends.pdf"
+  - "Microsoft-ProductBrochure.pdf"
+  - "Amazon-UserManual.pdf"
+  - "2024-12-01_Deutsche-Bank-Kontoauszug.pdf"
+  - "Telekom-Rechnung.pdf"
