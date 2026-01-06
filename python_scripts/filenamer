@@ -3,6 +3,21 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Check if Ollama is running, start it if not
+if ! pgrep -x "ollama" > /dev/null; then
+    echo "Ollama is not running. Starting Ollama..."
+    if command -v ollama > /dev/null; then
+        # Start Ollama in the background
+        ollama serve > /dev/null 2>&1 &
+        # Wait a moment for Ollama to start
+        sleep 2
+        echo "Ollama started."
+    else
+        echo "Error: Ollama is not installed. Please install it from https://ollama.com/download"
+        exit 1
+    fi
+fi
+
 # Convert all arguments to absolute paths
 ARGS=()
 for arg in "$@"; do
