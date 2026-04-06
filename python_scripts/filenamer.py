@@ -1,5 +1,14 @@
 # coding: utf-8
 
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "PyMuPDF>=1.24.0",
+#     "ollama>=0.4.0",
+#     "PyYAML>=6.0",
+# ]
+# ///
+
 """
 This script reads the contents of a PDF and then renames it with an adequate name.
 We use llama3.1 via Ollama.
@@ -15,7 +24,10 @@ import argparse
 import ollama
 import os
 import re
+import shutil
+import subprocess
 import sys
+import time
 import yaml
 from pathlib import Path
 
@@ -115,53 +127,104 @@ def read_pdf(file_path):
         print(f"An error occurred while reading the PDF: {e}")
         return None
 
-def get_new_filename(prompt, content, config):
+def _is_ollama_responsive(client):
     try:
-        client = ollama.Client()
-
-        # Truncate content if it exceeds max_characters
-        max_chars = config['max_characters']
-        encoded_content = content.encode('utf-8')
-        if len(encoded_content) > max_chars:
-            log(f"File content exceeds context length: {len(encoded_content)}. Truncating to {max_chars} characters.")
-            content = encoded_content[:max_chars].decode('utf-8', errors='ignore')
-
-        # Format examples from config
-        example_filenames = config.get('example_filenames', [])
-        if example_filenames:
-            examples_with_dates = [ex for ex in example_filenames if '_' in ex and ex[0].isdigit()]
-            examples_without_dates = [ex for ex in example_filenames if not ('_' in ex and ex[0].isdigit())]
-
-            examples_text = ""
-            if examples_with_dates:
-                examples_text += "Examples with dates:\n"
-                examples_text += "\n".join(f"- {ex}" for ex in examples_with_dates)
-                examples_text += "\n\n"
-            if examples_without_dates:
-                examples_text += "Examples without dates:\n"
-                examples_text += "\n".join(f"- {ex}" for ex in examples_without_dates)
-        else:
-            examples_text = ""
-
-        formatted_prompt = prompt.format(pdf=content, examples=examples_text)
-        response = client.generate(
-            prompt=formatted_prompt,
-            model=config['model'],
-            options={'temperature': config['temperature']}
-        )
-
-        # Extract the new filename from the 'response' key
-        if response and 'response' in response:
-            new_filename = response['response'].strip()
-            log(f"LLM suggested filename: {new_filename}")
-            return new_filename
-        else:
-            print(f"Unexpected response format: {response}")
-            return None
-
+        client.ps()
+        return True
     except Exception as e:
-        print(f"An error occurred while getting the new filename from the LLM: {e}")
-        return None
+        log(f"Ollama is not responsive yet: {e}")
+        return False
+
+def ensure_ollama_ready(config):
+    """
+    Ensure the Ollama server is running and the configured model is available.
+    Returns an Ollama client or raises RuntimeError with a user-facing message.
+    """
+    client = ollama.Client()
+
+    if _is_ollama_responsive(client):
+        log("Ollama is already running")
+    else:
+        ollama_binary = shutil.which("ollama")
+        if not ollama_binary:
+            raise RuntimeError(
+                "Ollama CLI not found in PATH. Please install Ollama from https://ollama.com/download"
+            )
+
+        log(f"Starting Ollama server with: {ollama_binary} serve")
+        try:
+            subprocess.Popen(
+                [ollama_binary, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to start Ollama automatically: {e}") from e
+
+        startup_timeout_seconds = 15
+        poll_interval_seconds = 0.5
+        deadline = time.time() + startup_timeout_seconds
+
+        while time.time() < deadline:
+            if _is_ollama_responsive(client):
+                log("Ollama started successfully")
+                break
+            time.sleep(poll_interval_seconds)
+        else:
+            raise RuntimeError(
+                "Failed to start Ollama automatically. Please check that Ollama can run on this machine."
+            )
+
+    try:
+        client.show(config['model'])
+    except Exception as e:
+        raise RuntimeError(
+            f"Ollama is running, but the model '{config['model']}' is not available: {e}"
+        ) from e
+
+    return client
+
+def get_new_filename(client, prompt, content, config):
+    # Truncate content if it exceeds max_characters
+    max_chars = config['max_characters']
+    encoded_content = content.encode('utf-8')
+    if len(encoded_content) > max_chars:
+        log(f"File content exceeds context length: {len(encoded_content)}. Truncating to {max_chars} characters.")
+        content = encoded_content[:max_chars].decode('utf-8', errors='ignore')
+
+    # Format examples from config
+    example_filenames = config.get('example_filenames', [])
+    if example_filenames:
+        examples_with_dates = [ex for ex in example_filenames if '_' in ex and ex[0].isdigit()]
+        examples_without_dates = [ex for ex in example_filenames if not ('_' in ex and ex[0].isdigit())]
+
+        examples_text = ""
+        if examples_with_dates:
+            examples_text += "Examples with dates:\n"
+            examples_text += "\n".join(f"- {ex}" for ex in examples_with_dates)
+            examples_text += "\n\n"
+        if examples_without_dates:
+            examples_text += "Examples without dates:\n"
+            examples_text += "\n".join(f"- {ex}" for ex in examples_without_dates)
+    else:
+        examples_text = ""
+
+    formatted_prompt = prompt.format(pdf=content, examples=examples_text)
+    response = client.generate(
+        prompt=formatted_prompt,
+        model=config['model'],
+        options={'temperature': config['temperature']}
+    )
+
+    # Extract the new filename from the 'response' key
+    if response and 'response' in response:
+        new_filename = response['response'].strip()
+        log(f"LLM suggested filename: {new_filename}")
+        return new_filename
+
+    raise RuntimeError(f"Unexpected response format: {response}")
 
 def validate_filename(filename):
     # Check if the filename only includes alphanumerical characters, hyphens, underscores
@@ -291,6 +354,12 @@ def process_files(file_paths, config):
     print(f"Processing {total_files} PDF file(s)...")
     log("Phase 1: Generating new filenames for all files...")
 
+    try:
+        client = ensure_ollama_ready(config)
+    except RuntimeError as e:
+        print(f"Cannot analyze files: {e}")
+        return
+
     processed_count = 0
     for file_path in file_paths:
         if file_path.lower().endswith(".pdf"):
@@ -298,11 +367,14 @@ def process_files(file_paths, config):
             print(f"Analyzing file {processed_count}/{total_files}: {os.path.basename(file_path)}")
             content = read_pdf(file_path)
             if content:
-                new_name = get_new_filename(prompt, content, config)
-                if new_name:
-                    rename_op = prepare_rename_operation(file_path, new_name, config)
-                    if rename_op:
-                        rename_operations.append(rename_op)
+                try:
+                    new_name = get_new_filename(client, prompt, content, config)
+                except Exception as e:
+                    print(f"An error occurred while getting the new filename from the LLM: {e}")
+                    return
+                rename_op = prepare_rename_operation(file_path, new_name, config)
+                if rename_op:
+                    rename_operations.append(rename_op)
 
     if not rename_operations:
         log("No rename operations to perform")
