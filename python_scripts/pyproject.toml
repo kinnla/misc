@@ -1,0 +1,25 @@
+[project]
+name = "python-scripts"
+version = "0.1.0"
+description = "Collection of utility Python scripts"
+requires-python = ">=3.8"
+dependencies = [
+    "PyMuPDF>=1.24.0",
+    "ollama>=0.4.0",
+    "PyYAML>=6.0",
+    "pyobjc-framework-EventKit>=10.0",
+    "pyobjc-framework-Cocoa>=10.0",
+]
+
+[project.scripts]
+scrape-macos-calendar = "scrape_macos_calendar:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["*.py"]
+
+[tool.hatch.build.targets.sdist]
+include = ["*.py", "pyproject.toml", "requirements.txt", "FILENAMER_README.md", "filenamer_config.yaml", "filenamer"]
